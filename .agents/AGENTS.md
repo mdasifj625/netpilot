@@ -48,3 +48,7 @@ When creating or modifying native features, conform to this folder structure:
 Before writing code, verify configuration integrity:
 *   `npx expo prebuild --platform android --no-install` — Regenerates `/android` to check autolinking and config plugins.
 *   `npx expo run:android` — Compiles the native codebase and boots the development server.
+
+### Layout and Styling Constraints
+*   **Do NOT use Tailwind `space-y-X` classes**: They are web-only CSS selectors (`child + child { margin-top }`) and are ignored on React Native views, squishing list layouts. Always use native flex layouts with inline `style={{ gap: X }}` or Tailwind `gap-X` properties.
+*   **Do NOT use custom/extended text sizes**: Extended sizes like `text-2xs` or `text-3xs` fail to compile if not explicitly added in Tailwind configurations, defaulting to standard browser font sizes (16px) and clipping cards. Always use standard font sizes or explicit inline definitions (e.g. `text-[10px]`, `text-[9px]`).
