@@ -188,7 +188,12 @@ class BackgroundService : Service(), SensorEventListener {
       // Create databases folder if missing
       dbFile.parentFile?.mkdirs()
       
-      database = SQLiteDatabase.openOrCreateDatabase(dbFile, null)
+      val db = SQLiteDatabase.openOrCreateDatabase(dbFile, null)
+      database = db
+
+      // Auto-clean database records older than 30 days to save storage footprint
+      val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
+      db.execSQL("DELETE FROM network_history WHERE timestamp < ?", arrayOf(thirtyDaysAgo))
     } catch (e: Exception) {
       e.printStackTrace()
     }

@@ -5,6 +5,11 @@ import java.io.IOException
 import java.io.InputStream
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.CountDownLatch
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.content.Context
 import kotlin.math.abs
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -97,48 +102,88 @@ class NetworkSpeedModule : Module() {
     }
   }
 
+  private fun isWifiConnection(): Boolean {
+    val ctx = context ?: return false
+    val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
+    val activeNetwork = cm.activeNetwork ?: return false
+    val capabilities = cm.getNetworkCapabilities(activeNetwork) ?: return false
+    return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+  }
+
   private fun runDownloadTest(url: String) {
-    val request = Request.Builder().url(url).build()
+    val isWifi = isWifiConnection()
+    val threadCount = if (isWifi) 8 else 4
+    val downloadExecutor = Executors.newFixedThreadPool(threadCount)
+    
+    val totalBytesRead = AtomicLong(0L)
+    val startTime = System.currentTimeMillis()
+    val durationLimit = 8000 // 8 seconds test duration limit
+    val latch = CountDownLatch(threadCount)
+    
     try {
-      client.newCall(request).execute().use { response ->
-        if (!response.isSuccessful) throw IOException("Failed to download file: $response")
-        val body = response.body ?: return
-        val inputStream: InputStream = body.byteStream()
-        
-        val buffer = ByteArray(16384) // 16KB buffer
-        var bytesRead: Int
-        var totalBytesRead = 0L
-        val startTime = System.currentTimeMillis()
-        val durationLimit = 8000 // 8 seconds test
-        
-        var lastUpdate = System.currentTimeMillis()
-
-        while (inputStream.read(buffer).also { bytesRead = it } != -1 && isRunning) {
-          totalBytesRead += bytesRead
-          val now = System.currentTimeMillis()
-          val elapsed = now - startTime
-          
-          if (elapsed >= durationLimit) break
-
-          if (now - lastUpdate > 150) {
-            val speedMbps = calculateSpeedMbps(totalBytesRead, elapsed)
-            val progress = elapsed.toFloat() / durationLimit
-            sendEvent("onSpeedTestProgress", mapOf(
-              "type" to "download",
-              "speedMbps" to speedMbps,
-              "progress" to progress
-            ))
-            lastUpdate = now
+      // Spawn multiple parallel download streams
+      for (i in 0 until threadCount) {
+        downloadExecutor.execute {
+          try {
+            val request = Request.Builder().url(url).build()
+            client.newCall(request).execute().use { response ->
+              if (response.isSuccessful) {
+                val body = response.body
+                if (body != null) {
+                  val inputStream: InputStream = body.byteStream()
+                  val buffer = ByteArray(16384) // 16KB stream chunk read buffer
+                  var bytesRead: Int
+                  while (inputStream.read(buffer).also { bytesRead = it } != -1 && isRunning) {
+                    totalBytesRead.addAndGet(bytesRead.toLong())
+                    val elapsed = System.currentTimeMillis() - startTime
+                    if (elapsed >= durationLimit) break
+                  }
+                }
+              }
+            }
+          } catch (e: Exception) {
+            // Ignore individual stream exceptions
+          } finally {
+            latch.countDown()
           }
         }
-        
-        val finalElapsed = System.currentTimeMillis() - startTime
-        val finalSpeed = calculateSpeedMbps(totalBytesRead, finalElapsed)
-        sendEvent("onSpeedTestFinished", mapOf(
-          "type" to "download",
-          "averageSpeedMbps" to finalSpeed
-        ))
       }
+      
+      // Monitor progress and report updates to JS thread
+      var lastUpdate = System.currentTimeMillis()
+      while (isRunning) {
+        val now = System.currentTimeMillis()
+        val elapsed = now - startTime
+        
+        if (elapsed >= durationLimit || latch.count == 0L) {
+          break
+        }
+        
+        if (now - lastUpdate > 150) {
+          val speedMbps = calculateSpeedMbps(totalBytesRead.get(), elapsed)
+          val progress = elapsed.toFloat() / durationLimit
+          sendEvent("onSpeedTestProgress", mapOf(
+            "type" to "download",
+            "speedMbps" to speedMbps,
+            "progress" to progress
+          ))
+          lastUpdate = now
+        }
+        Thread.sleep(100)
+      }
+      
+      // Clean up and shutdown executors
+      downloadExecutor.shutdownNow()
+      try {
+        downloadExecutor.awaitTermination(2, TimeUnit.SECONDS)
+      } catch (e: Exception) {}
+      
+      val finalElapsed = System.currentTimeMillis() - startTime
+      val finalSpeed = calculateSpeedMbps(totalBytesRead.get(), finalElapsed)
+      sendEvent("onSpeedTestFinished", mapOf(
+        "type" to "download",
+        "averageSpeedMbps" to finalSpeed
+      ))
     } catch (e: Exception) {
       sendEvent("onSpeedTestFinished", mapOf("type" to "download", "averageSpeedMbps" to 0.0))
     }
