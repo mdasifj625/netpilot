@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, ScrollView, TouchableOpacity, Alert, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import * as Location from "expo-location";
 import { 
   Shield, 
@@ -14,7 +14,9 @@ import {
   RefreshCw, 
   HelpCircle,
   Network,
-  Sliders
+  Sliders,
+  MapPin,
+  Maximize2
 } from "lucide-react-native";
 
 // Import custom native modules
@@ -22,6 +24,7 @@ import { getCellularDetails, getNetworkDetails, CellularDiagnosticsData, Network
 import { launchRadioInfo, launchMobileNetworkSettings, launchSamsungBandSelection } from "../../../modules/network-intent";
 
 export default function DashboardScreen() {
+  const router = useRouter();
   const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null);
   const [cellDetails, setCellDetails] = useState<CellularDiagnosticsData | null>(null);
   const [netDetails, setNetDetails] = useState<NetworkDetailsData | null>(null);
@@ -227,6 +230,29 @@ export default function DashboardScreen() {
             </View>
           </View>
         </View>
+
+        {/* Coverage Map Navigation Card */}
+        <TouchableOpacity 
+          onPress={() => router.push("/map")}
+          className="bg-slate-900 border border-slate-800 rounded-3xl p-5 mb-5 shadow-lg flex-row justify-between items-center overflow-hidden relative"
+        >
+          {/* Subtle Map visual icon glow */}
+          <View className="absolute -right-6 -bottom-6 w-24 h-24 rounded-full bg-sky-500/10 filter blur-xl" />
+          <View className="flex-row items-center gap-3.5 flex-1 pr-4">
+            <View className="p-2.5 rounded-2xl bg-sky-500/10 border border-sky-500/20">
+              <MapPin size={24} color="#0ea5e9" />
+            </View>
+            <View className="flex-1">
+              <Text className="text-lg font-bold text-slate-100">Coverage Tracker</Text>
+              <Text className="text-slate-400 text-xs mt-0.5 leading-relaxed">
+                Visualize recorded cellular RSRP and download speeds on an interactive heatmap.
+              </Text>
+            </View>
+          </View>
+          <View className="p-2 rounded-full bg-slate-950 border border-slate-800">
+            <Maximize2 size={16} color="#94a3b8" />
+          </View>
+        </TouchableOpacity>
 
         {/* Network Force / Settings Toggles */}
         <Text className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3 px-1">Native Control Panels</Text>

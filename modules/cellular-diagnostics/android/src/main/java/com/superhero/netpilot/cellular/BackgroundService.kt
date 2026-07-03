@@ -151,6 +151,9 @@ class BackgroundService : Service() {
       val signalLabel = if (rsrp != null && rsrp != 2147483647) "$rsrp dBm" else "No Signal"
       updateNotification("Connected to $networkType", signalLabel)
 
+      // Evaluate active background rules
+      evaluateAutomationRules(rsrp)
+
       // Evaluate Adaptive thresholds
       var shouldLog = false
 
@@ -186,6 +189,61 @@ class BackgroundService : Service() {
       }
     } catch (e: Exception) {
       e.printStackTrace()
+    }
+  }
+
+  private fun evaluateAutomationRules(rsrp: Int?) {
+    val db = database ?: return
+    try {
+      // Query SQLite for active automation rules
+      val cursor = db.rawQuery(
+        "SELECT trigger_type, operator, value, action_type, name FROM automation_rules WHERE is_active = 1",
+        null
+      )
+      
+      while (cursor.moveToNext()) {
+        val triggerType = cursor.getString(0)
+        val operator = cursor.getString(1)
+        val thresholdStr = cursor.getString(2)
+        val actionType = cursor.getString(3)
+        val name = cursor.getString(4)
+
+        val threshold = thresholdStr.toDoubleOrNull() ?: continue
+        var isTriggered = false
+
+        if (triggerType == "signal") {
+          if (rsrp != null && rsrp != 2147483647) {
+            isTriggered = when (operator) {
+              "lt" -> rsrp < threshold
+              "gt" -> rsrp > threshold
+              "eq" -> rsrp == threshold.toInt()
+              else -> false
+            }
+          }
+        }
+
+        if (isTriggered) {
+          triggerRuleAction(name, triggerType, threshold, actionType)
+        }
+      }
+      cursor.close()
+    } catch (e: Exception) {
+      e.printStackTrace()
+    }
+  }
+
+  private fun triggerRuleAction(ruleName: String, triggerType: String, threshold: Double, actionType: String) {
+    if (actionType == "notification" || actionType == "alert_sound") {
+      val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      val ruleNotification = NotificationCompat.Builder(this, CHANNEL_ID)
+        .setContentTitle("NetPilot Rule Triggered")
+        .setContentText("Rule '$ruleName' fired: $triggerType threshold breached!")
+        .setSmallIcon(android.R.drawable.stat_notify_warn)
+        .setPriority(NotificationCompat.PRIORITY_HIGH)
+        .setAutoCancel(true)
+        .build()
+      
+      notificationManager.notify(ruleName.hashCode(), ruleNotification)
     }
   }
 
