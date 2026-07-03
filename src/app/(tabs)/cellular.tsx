@@ -125,7 +125,7 @@ export default function CellularScreen() {
                 yKeys={["rsrp"]}
                 domain={{ y: [-130, -50] }}
               >
-                {({ points }) => (
+                {({ points }: any) => (
                   <Line 
                     points={points.rsrp} 
                     color="#0ea5e9" 

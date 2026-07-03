@@ -1,4 +1,4 @@
-import { requireNativeModule, EventEmitter, Subscription } from 'expo-modules-core';
+import { requireNativeModule, EventEmitter } from 'expo-modules-core';
 
 let NetworkSpeed: any = null;
 try {
@@ -42,27 +42,27 @@ export function stopSpeedTest(): boolean {
 
 export function addSpeedProgressListener(
   listener: (event: SpeedTestProgressEvent) => void
-): Subscription {
+): { remove(): void } {
   if (emitter) {
-    return emitter.addListener('onSpeedTestProgress', listener);
+    return (emitter as any).addListener('onSpeedTestProgress', listener);
   }
-  return { remove: () => {} } as any;
+  return { remove: () => {} };
 }
 
 export function addSpeedFinishedListener(
   listener: (event: SpeedTestFinishedEvent) => void
-): Subscription {
+): { remove(): void } {
   if (emitter) {
-    return emitter.addListener('onSpeedTestFinished', listener);
+    return (emitter as any).addListener('onSpeedTestFinished', listener);
   }
-  return { remove: () => {} } as any;
+  return { remove: () => {} };
 }
 
 export function addPingFinishedListener(
   listener: (event: PingFinishedEvent) => void
-): Subscription {
+): { remove(): void } {
   if (emitter) {
-    return emitter.addListener('onPingFinished', listener);
+    return (emitter as any).addListener('onPingFinished', listener);
   }
-  return { remove: () => {} } as any;
+  return { remove: () => {} };
 }

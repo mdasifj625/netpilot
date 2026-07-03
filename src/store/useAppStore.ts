@@ -1,6 +1,5 @@
-import { MMKV } from "react-native-mmkv";
 import { create } from "zustand";
-import { persist, StateStorage } from "zustand/middleware";
+import { persist, StateStorage, createJSONStorage } from "zustand/middleware";
 import { Platform } from "react-native";
 
 // Web Mock for MMKV utilizing standard browser localStorage
@@ -26,10 +25,20 @@ class WebMMKV {
   }
 }
 
+// Load Native MMKV conditionally on mobile
+let NativeMMKV: any = null;
+if (Platform.OS !== "web") {
+  try {
+    NativeMMKV = require("react-native-mmkv").MMKV;
+  } catch (e) {
+    console.error("MMKV loading failed:", e);
+  }
+}
+
 // Initialize platform-specific storage instance
-export const appStorage = Platform.OS === "web"
+export const appStorage = Platform.OS === "web" || !NativeMMKV
   ? new WebMMKV()
-  : new MMKV({ id: "netpilot-settings" });
+  : new NativeMMKV({ id: "netpilot-settings" });
 
 // Create a custom storage wrapper for Zustand persistence middleware
 const zustandStorage: StateStorage = {
@@ -52,6 +61,8 @@ interface AppSettings {
   weakSignalThresholdDbm: number;
   slowSpeedThresholdMbps: number;
   isDarkTheme: boolean;
+  customDownloadUrl: string;
+  customUploadUrl: string;
 }
 
 interface AppStore {
@@ -67,6 +78,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   weakSignalThresholdDbm: -105,
   slowSpeedThresholdMbps: 10,
   isDarkTheme: true,
+  customDownloadUrl: "",
+  customUploadUrl: "",
 };
 
 export const useAppStore = create<AppStore>()(
@@ -81,7 +94,7 @@ export const useAppStore = create<AppStore>()(
     }),
     {
       name: "netpilot-state",
-      storage: zustandStorage,
+      storage: createJSONStorage(() => zustandStorage),
     }
   )
 );

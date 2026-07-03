@@ -1,4 +1,4 @@
-import { requireNativeModule, EventEmitter, Subscription } from 'expo-modules-core';
+import { requireNativeModule, EventEmitter } from 'expo-modules-core';
 
 let CellularDiagnostics: any = null;
 try {
@@ -84,9 +84,9 @@ export function setPowerSaverEnabled(enabled: boolean): boolean {
 
 export function addSignalStrengthListener(
   listener: (event: { rsrp: number | null; networkType: string }) => void
-): Subscription {
+): { remove(): void } {
   if (emitter) {
-    return emitter.addListener('onSignalStrengthChanged', listener);
+    return (emitter as any).addListener('onSignalStrengthChanged', listener);
   }
-  return { remove: () => {} } as any;
+  return { remove: () => {} };
 }

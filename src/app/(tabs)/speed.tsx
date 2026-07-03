@@ -22,10 +22,12 @@ import {
 import { getCellularDetails } from "../../../modules/cellular-diagnostics";
 import { db } from "../../database/db";
 import { networkHistory } from "../../database/schema";
+import { useAppStore } from "../../store/useAppStore";
 
 type TestStatus = "idle" | "ping" | "download" | "upload" | "finished";
 
 export default function SpeedScreen() {
+  const { settings } = useAppStore();
   const [status, setStatus] = useState<TestStatus>("idle");
   const [progress, setProgress] = useState(0);
   const [ping, setPing] = useState<number | null>(null);
@@ -33,8 +35,12 @@ export default function SpeedScreen() {
   const [downloadSpeed, setDownloadSpeed] = useState<number>(0);
   const [uploadSpeed, setUploadSpeed] = useState<number>(0);
 
-  const DOWNLOAD_URL = "https://speed.cloudflare.com/__down?bytes=15000000"; // 15MB buffer
-  const UPLOAD_URL = "https://speed.cloudflare.com/__up";
+  const DOWNLOAD_URL = settings.customDownloadUrl.trim() !== ""
+    ? settings.customDownloadUrl.trim()
+    : "https://speed.cloudflare.com/__down?bytes=15000000";
+  const UPLOAD_URL = settings.customUploadUrl.trim() !== ""
+    ? settings.customUploadUrl.trim()
+    : "https://speed.cloudflare.com/__up";
 
   useEffect(() => {
     // Register native event listeners

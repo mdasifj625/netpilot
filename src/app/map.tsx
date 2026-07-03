@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, TouchableOpacity, Platform, ScrollView, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { desc, notNull } from "drizzle-orm";
+import { desc, isNotNull } from "drizzle-orm";
 import { 
   ArrowLeft, 
   MapPin, 
@@ -70,7 +70,7 @@ export default function CoverageMapScreen() {
       const history = await db
         .select()
         .from(networkHistory)
-        .where(notNull(networkHistory.latitude))
+        .where(isNotNull(networkHistory.latitude))
         .orderBy(desc(networkHistory.timestamp))
         .limit(150);
       

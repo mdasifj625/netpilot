@@ -1,4 +1,4 @@
-import { requireNativeModule, EventEmitter, Subscription } from 'expo-modules-core';
+import { requireNativeModule, EventEmitter } from 'expo-modules-core';
 
 let LanScanner: any = null;
 try {
@@ -32,27 +32,27 @@ export function stopScan(): boolean {
 
 export function addDeviceFoundListener(
   listener: (device: DiscoveredDevice) => void
-): Subscription {
+): { remove(): void } {
   if (emitter) {
-    return emitter.addListener('onDeviceFound', listener);
+    return (emitter as any).addListener('onDeviceFound', listener);
   }
-  return { remove: () => {} } as any;
+  return { remove: () => {} };
 }
 
 export function addScanProgressListener(
   listener: (event: { progress: number }) => void
-): Subscription {
+): { remove(): void } {
   if (emitter) {
-    return emitter.addListener('onScanProgress', listener);
+    return (emitter as any).addListener('onScanProgress', listener);
   }
-  return { remove: () => {} } as any;
+  return { remove: () => {} };
 }
 
 export function addScanFinishedListener(
   listener: (event: { devicesCount: number }) => void
-): Subscription {
+): { remove(): void } {
   if (emitter) {
-    return emitter.addListener('onScanFinished', listener);
+    return (emitter as any).addListener('onScanFinished', listener);
   }
-  return { remove: () => {} } as any;
+  return { remove: () => {} };
 }

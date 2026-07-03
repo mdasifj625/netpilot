@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
+import { resolveMacVendor } from "../../utils/macVendors";
 import { 
   Wifi, 
   Search, 
@@ -210,6 +211,12 @@ export default function WifiScreen() {
                   <Text className="text-slate-500 text-xs font-semibold">Link Speed</Text>
                   <Text className="text-slate-200 text-xs font-bold">{connectedInfo.linkSpeed} Mbps</Text>
                 </View>
+                {connectedInfo.bssid && resolveMacVendor(connectedInfo.bssid) && (
+                  <View className="flex-row justify-between">
+                    <Text className="text-slate-500 text-xs font-semibold">Manufacturer</Text>
+                    <Text className="text-slate-200 text-xs font-bold">{resolveMacVendor(connectedInfo.bssid)}</Text>
+                  </View>
+                )}
               </View>
             </View>
           ) : (

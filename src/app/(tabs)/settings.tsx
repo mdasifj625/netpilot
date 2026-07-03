@@ -99,6 +99,14 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleUpdateDownloadUrl = (url: string) => {
+    updateSettings({ customDownloadUrl: url });
+  };
+
+  const handleUpdateUploadUrl = (url: string) => {
+    updateSettings({ customUploadUrl: url });
+  };
+
   const handleClearLogs = async () => {
     Alert.alert(
       "Confirm Action",
@@ -206,6 +214,40 @@ export default function SettingsScreen() {
               onValueChange={handleTogglePowerSaver}
               trackColor={{ false: "#1e293b", true: "#0ea5e9" }}
               thumbColor={settings.powerSaverEnabled ? "#f8fafc" : "#64748b"}
+            />
+          </View>
+        </View>
+
+        {/* Speed Test Server Overrides */}
+        <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-lg" style={{ gap: 12 }}>
+          <View className="flex-row items-center gap-2 mb-2">
+            <Sliders size={18} color="#818cf8" />
+            <Text className="text-sm font-bold text-slate-200">Speed Test Server Overrides</Text>
+          </View>
+
+          <View>
+            <Text className="text-slate-400 text-[9px] uppercase font-bold tracking-wider mb-1">Custom Download URL (HTTP GET)</Text>
+            <TextInput
+              value={settings.customDownloadUrl}
+              onChangeText={handleUpdateDownloadUrl}
+              placeholder="Default: Cloudflare Edge CDN (15MB)"
+              placeholderTextColor="#64748b"
+              autoCapitalize="none"
+              autoCorrect={false}
+              className="bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 text-xs font-mono"
+            />
+          </View>
+
+          <View>
+            <Text className="text-slate-400 text-[9px] uppercase font-bold tracking-wider mb-1">Custom Upload URL (HTTP POST)</Text>
+            <TextInput
+              value={settings.customUploadUrl}
+              onChangeText={handleUpdateUploadUrl}
+              placeholder="Default: Cloudflare Edge CDN Upstream"
+              placeholderTextColor="#64748b"
+              autoCapitalize="none"
+              autoCorrect={false}
+              className="bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 text-xs font-mono"
             />
           </View>
         </View>
