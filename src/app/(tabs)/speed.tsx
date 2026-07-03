@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, ScrollView, TouchableOpacity, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFocusEffect } from "expo-router";
+import { desc, isNotNull } from "drizzle-orm";
 import { 
   Gauge, 
   ArrowDown, 
@@ -79,6 +81,57 @@ const Speedometer = ({ speed }: { speed: number }) => {
   );
 };
 
+const SpeedHistoryChart = ({ data }: { data: any[] }) => {
+  if (data.length === 0) {
+    return (
+      <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 mb-5 items-center justify-center py-10 shadow-md">
+        <Text className="text-slate-500 text-xs font-semibold uppercase tracking-wider">No Speed History Yet</Text>
+      </View>
+    );
+  }
+
+  const maxVal = Math.max(...data.map(d => Math.max(d.download || 10, d.upload || 10)), 10);
+
+  return (
+    <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 mb-5 shadow-lg">
+      <Text className="text-sm font-bold text-slate-200 mb-4">Throughput Trends (Last 10 Tests)</Text>
+      
+      <View className="flex-row items-end justify-between h-32 pt-2 px-2 relative border-b border-slate-800">
+        {data.map((item, idx) => {
+          const dlHeight = Math.min(100, Math.round(((item.download || 0) / maxVal) * 100));
+          const ulHeight = Math.min(100, Math.round(((item.upload || 0) / maxVal) * 100));
+          
+          return (
+            <View key={item.id || idx} className="items-center flex-1 mx-1.5" style={{ gap: 2 }}>
+              <View className="flex-row items-end h-24 gap-1 w-full justify-center">
+                <View 
+                  style={{ height: `${dlHeight}%` }}
+                  className="w-2.5 bg-sky-500 rounded-t-sm"
+                />
+                <View 
+                  style={{ height: `${ulHeight}%` }}
+                  className="w-2.5 bg-indigo-400 rounded-t-sm"
+                />
+              </View>
+              <Text className="text-[8px] text-slate-500 font-bold mt-1">#{data.length - idx}</Text>
+            </View>
+          );
+        })}
+      </View>
+      <View className="flex-row gap-4 mt-3 justify-center">
+        <View className="flex-row items-center gap-1.5">
+          <View className="w-2.5 h-2.5 rounded-sm bg-sky-500" />
+          <Text className="text-slate-400 text-[9px] font-bold uppercase tracking-wider">Download</Text>
+        </View>
+        <View className="flex-row items-center gap-1.5">
+          <View className="w-2.5 h-2.5 rounded-sm bg-indigo-400" />
+          <Text className="text-slate-400 text-[9px] font-bold uppercase tracking-wider">Upload</Text>
+        </View>
+      </View>
+    </View>
+  );
+};
+
 type TestStatus = "idle" | "ping" | "download" | "upload" | "finished";
 
 export default function SpeedScreen() {
@@ -89,6 +142,27 @@ export default function SpeedScreen() {
   const [jitter, setJitter] = useState<number | null>(null);
   const [downloadSpeed, setDownloadSpeed] = useState<number>(0);
   const [uploadSpeed, setUploadSpeed] = useState<number>(0);
+  const [history, setHistory] = useState<any[]>([]);
+
+  const fetchSpeedHistory = async () => {
+    try {
+      const list = await db
+        .select()
+        .from(networkHistory)
+        .where(isNotNull(networkHistory.download))
+        .orderBy(desc(networkHistory.timestamp))
+        .limit(10);
+      setHistory(list.reverse());
+    } catch (e) {
+      console.error("Failed to query speed test history:", e);
+    }
+  };
+
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchSpeedHistory();
+    }, [])
+  );
 
   const DOWNLOAD_URL = settings.customDownloadUrl.trim() !== ""
     ? settings.customDownloadUrl.trim()
@@ -138,20 +212,25 @@ export default function SpeedScreen() {
     };
   }, [downloadSpeed, ping]);
 
-  const saveTestResult = async (dl: number, ul: number) => {
+  const saveTestResult = async (finalDownload: number, finalUpload: number) => {
     try {
       const cell = getCellularDetails();
+      const cellCarrier = cell?.carrier ?? "WiFi Link";
+      const connType = cell?.networkType ?? "WiFi";
+      const finalPing = ping;
+      // Save speed test to local database
       await db.insert(networkHistory).values({
         timestamp: Date.now(),
-        signal: cell?.rsrp ?? null,
-        carrier: cell?.carrier ?? "WiFi Link",
-        networkType: cell?.networkType ?? "WiFi",
-        download: dl,
-        upload: ul,
-        ping: ping,
+        signal: null,
+        carrier: cellCarrier,
+        networkType: connType,
+        download: finalDownload,
+        upload: finalUpload,
+        ping: finalPing,
         latitude: null,
-        longitude: null
+        longitude: null,
       });
+      fetchSpeedHistory();
       console.log("Speed test record saved successfully.");
     } catch (e) {
       console.error("Failed to save speed test history:", e);
@@ -293,6 +372,9 @@ export default function SpeedScreen() {
             </View>
           </View>
         </View>
+
+        {/* Speed Test History Chart */}
+        <SpeedHistoryChart data={history} />
       </ScrollView>
     </SafeAreaView>
   );

@@ -56,3 +56,18 @@ export function addScanFinishedListener(
   }
   return { remove: () => {} };
 }
+
+export function scanDevicePorts(ip: string): Promise<number[]> {
+  if (LanScanner) {
+    return LanScanner.scanDevicePorts(ip);
+  }
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      if (ip.endsWith(".1")) {
+        resolve([80, 443]);
+      } else {
+        resolve([]);
+      }
+    }, 400);
+  });
+}

@@ -31,6 +31,22 @@ class LanScannerModule : Module() {
       isScanning = false
       return@Function true
     }
+
+    Function("scanDevicePorts") { ip: String ->
+      val openPorts = mutableListOf<Int>()
+      val ports = listOf(22, 53, 80, 443, 8080)
+      for (port in ports) {
+        try {
+          val socket = java.net.Socket()
+          socket.connect(java.net.InetSocketAddress(ip, port), 250)
+          socket.close()
+          openPorts.add(port)
+        } catch (e: Exception) {
+          // Closed
+        }
+      }
+      return@Function openPorts
+    }
   }
 
   private fun startPingSweep() {

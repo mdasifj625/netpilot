@@ -111,6 +111,10 @@ export default function SettingsScreen() {
     updateSettings({ customUploadUrl: url });
   };
 
+  const handleUpdatePingTarget = (url: string) => {
+    updateSettings({ customPingTarget: url });
+  };
+
   const handleClearLogs = async () => {
     Alert.alert(
       "Confirm Action",
@@ -282,11 +286,11 @@ export default function SettingsScreen() {
           </View>
 
           <View>
-            <Text className="text-slate-400 text-[9px] uppercase font-bold tracking-wider mb-1">Custom Upload URL (HTTP POST)</Text>
+            <Text className="text-slate-400 text-[9px] uppercase font-bold tracking-wider mb-1">Custom Ping Target (HTTP HEAD)</Text>
             <TextInput
-              value={settings.customUploadUrl}
-              onChangeText={handleUpdateUploadUrl}
-              placeholder="Default: Cloudflare Edge CDN Upstream"
+              value={settings.customPingTarget}
+              onChangeText={handleUpdatePingTarget}
+              placeholder="Default: https://1.1.1.1"
               placeholderTextColor="#64748b"
               autoCapitalize="none"
               autoCorrect={false}

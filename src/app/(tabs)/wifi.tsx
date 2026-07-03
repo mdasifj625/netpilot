@@ -45,7 +45,8 @@ import {
   addDeviceFoundListener, 
   addScanFinishedListener, 
   addScanProgressListener, 
-  DiscoveredDevice 
+  DiscoveredDevice,
+  scanDevicePorts
 } from "../../../modules/lan-scanner";
 
 export default function WifiScreen() {
@@ -58,6 +59,30 @@ export default function WifiScreen() {
 
   // LAN Scanner State
   const [lanDevices, setLanDevices] = useState<DiscoveredDevice[]>([]);
+  const [selectedIp, setSelectedIp] = useState<string | null>(null);
+  const [openPorts, setOpenPorts] = useState<number[]>([]);
+  const [isScanningPorts, setIsScanningPorts] = useState(false);
+
+  const handleDevicePress = async (ip: string) => {
+    if (selectedIp === ip) {
+      setSelectedIp(null);
+      setOpenPorts([]);
+      return;
+    }
+    
+    setSelectedIp(ip);
+    setIsScanningPorts(true);
+    setOpenPorts([]);
+    
+    try {
+      const ports = await scanDevicePorts(ip);
+      setOpenPorts(ports);
+    } catch (e) {
+      console.error("Failed to scan device ports:", e);
+    } finally {
+      setIsScanningPorts(false);
+    }
+  };
 
   const getDeviceIcon = (hostname: string | null) => {
     if (!hostname) return <Cpu size={16} color="#818cf8" />;
@@ -386,26 +411,72 @@ export default function WifiScreen() {
               data={lanDevices}
               keyExtractor={(item) => item.ip}
               contentContainerStyle={{ paddingBottom: 24 }}
-              renderItem={({ item }) => (
-                <View className="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-3 flex-row items-center justify-between shadow-md">
-                  <View className="flex-row items-center gap-3.5 flex-1 pr-3">
-                    <View className="p-2.5 bg-slate-950 border border-slate-800/80 rounded-xl">
-                      {getDeviceIcon(item.hostname)}
+              renderItem={({ item }) => {
+                const isSelected = selectedIp === item.ip;
+                return (
+                  <TouchableOpacity 
+                    onPress={() => handleDevicePress(item.ip)}
+                    activeOpacity={0.8}
+                    className="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-3 shadow-md"
+                  >
+                    <View className="flex-row items-center justify-between">
+                      <View className="flex-row items-center gap-3.5 flex-1 pr-3">
+                        <View className="p-2.5 bg-slate-950 border border-slate-800/80 rounded-xl">
+                          {getDeviceIcon(item.hostname)}
+                        </View>
+                        <View className="flex-1">
+                          <Text className="text-slate-200 font-bold text-sm">{item.ip}</Text>
+                          <Text className="text-slate-500 font-medium text-xs mt-0.5" numberOfLines={1}>
+                            {item.hostname || "Unknown Host"}
+                          </Text>
+                        </View>
+                      </View>
+                      
+                      <View className="items-end">
+                        <Text className="text-indigo-400 font-bold text-xs">{item.ping.toFixed(1)} ms</Text>
+                        <Text className="text-slate-500 text-[9px] font-semibold mt-0.5">Response Time</Text>
+                      </View>
                     </View>
-                    <View className="flex-1">
-                      <Text className="text-slate-200 font-bold text-sm">{item.ip}</Text>
-                      <Text className="text-slate-500 font-medium text-xs mt-0.5" numberOfLines={1}>
-                        {item.hostname || "Unknown Host"}
-                      </Text>
-                    </View>
-                  </View>
-                  
-                  <View className="items-end">
-                    <Text className="text-indigo-400 font-bold text-xs">{item.ping.toFixed(1)} ms</Text>
-                    <Text className="text-slate-500 text-[9px] font-semibold mt-0.5">Response Time</Text>
-                  </View>
-                </View>
-              )}
+
+                    {isSelected && (
+                      <View className="mt-4 pt-3.5 border-t border-slate-800/60" style={{ gap: 8 }}>
+                        <Text className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Common Port Audit</Text>
+                        {isScanningPorts ? (
+                          <ActivityIndicator size="small" color="#0ea5e9" className="my-1.5" />
+                        ) : (
+                          <View className="flex-row flex-wrap gap-2 mt-1">
+                            {[22, 53, 80, 443, 8080].map((port) => {
+                              const isOpen = openPorts.includes(port);
+                              const portNames: Record<number, string> = {
+                                22: "SSH",
+                                53: "DNS",
+                                80: "HTTP",
+                                443: "HTTPS",
+                                8080: "Web Alt"
+                              };
+                              return (
+                                <View 
+                                  key={port} 
+                                  className={`px-3 py-1.5 rounded-xl border flex-row items-center gap-1.5 ${
+                                    isOpen 
+                                      ? "bg-emerald-500/10 border-emerald-500/25" 
+                                      : "bg-slate-950/40 border-slate-800/60 opacity-60"
+                                  }`}
+                                >
+                                  <View className={`w-1.5 h-1.5 rounded-full ${isOpen ? "bg-emerald-400" : "bg-slate-600"}`} />
+                                  <Text className={`font-bold text-[9px] uppercase tracking-wider ${isOpen ? "text-emerald-400" : "text-slate-500"}`}>
+                                    {port} • {portNames[port]}
+                                  </Text>
+                                </View>
+                              );
+                            })}
+                          </View>
+                        )}
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              }}
             />
           ) : (
             <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 mb-5 items-center justify-center py-16 flex-1">

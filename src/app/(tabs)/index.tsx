@@ -22,13 +22,16 @@ import {
 // Import custom native modules
 import { getCellularDetails, getNetworkDetails, CellularDiagnosticsData, NetworkDetailsData } from "../../../modules/cellular-diagnostics";
 import { launchRadioInfo, launchMobileNetworkSettings, launchSamsungBandSelection } from "../../../modules/network-intent";
+import { useAppStore } from "../../store/useAppStore";
 
 export default function DashboardScreen() {
   const router = useRouter();
+  const { settings } = useAppStore();
   const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null);
   const [cellDetails, setCellDetails] = useState<CellularDiagnosticsData | null>(null);
   const [netDetails, setNetDetails] = useState<NetworkDetailsData | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [pingLatency, setPingLatency] = useState<number | null>(null);
 
   // Check and request location permission (required for telephony scan results)
   const checkPermission = async () => {
@@ -90,6 +93,32 @@ export default function DashboardScreen() {
 
       return () => clearInterval(interval);
     }, [])
+  );
+
+  useFocusEffect(
+    React.useCallback(() => {
+      let active = true;
+      const interval = setInterval(async () => {
+        const target = settings.customPingTarget.trim() !== ""
+          ? settings.customPingTarget.trim()
+          : "https://1.1.1.1";
+        
+        const start = Date.now();
+        try {
+          await fetch(target, { method: "HEAD", mode: "no-cors" });
+          if (active) {
+            setPingLatency(Date.now() - start);
+          }
+        } catch (e) {
+          if (active) setPingLatency(null);
+        }
+      }, 4000);
+      
+      return () => {
+        active = false;
+        clearInterval(interval);
+      };
+    }, [settings.customPingTarget])
   );
 
   // Determine signal quality styles
@@ -218,6 +247,13 @@ export default function DashboardScreen() {
               <Text className="text-slate-400 text-sm">DNS Servers</Text>
               <Text className="text-slate-200 font-mono text-sm text-right max-w-[200px]" numberOfLines={1} ellipsizeMode="tail">
                 {netDetails?.dns || "—"}
+              </Text>
+            </View>
+
+            <View className="flex-row justify-between items-center border-b border-slate-800/40 pb-2.5">
+              <Text className="text-slate-400 text-sm">Latency ({settings.customPingTarget ? settings.customPingTarget.replace("https://", "").replace("http://", "").split("/")[0] : "1.1.1.1"})</Text>
+              <Text className={`font-mono text-sm font-bold ${pingLatency !== null ? "text-sky-400" : "text-slate-400"}`}>
+                {pingLatency !== null ? `${pingLatency} ms` : "—"}
               </Text>
             </View>
 

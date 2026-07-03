@@ -63,6 +63,7 @@ interface AppSettings {
   isDarkTheme: boolean;
   customDownloadUrl: string;
   customUploadUrl: string;
+  customPingTarget: string;
 }
 
 interface AppStore {
@@ -80,6 +81,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   isDarkTheme: true,
   customDownloadUrl: "",
   customUploadUrl: "",
+  customPingTarget: "https://1.1.1.1",
 };
 
 export const useAppStore = create<AppStore>()(
