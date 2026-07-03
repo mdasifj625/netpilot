@@ -78,6 +78,10 @@ export function stopBackgroundService(): boolean {
   return CellularDiagnostics ? CellularDiagnostics.stopBackgroundService() : false;
 }
 
+export function setPowerSaverEnabled(enabled: boolean): boolean {
+  return CellularDiagnostics ? CellularDiagnostics.setPowerSaverEnabled(enabled) : false;
+}
+
 export function addSignalStrengthListener(
   listener: (event: { rsrp: number | null; networkType: string }) => void
 ): Subscription {

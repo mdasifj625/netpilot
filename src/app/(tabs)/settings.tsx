@@ -15,7 +15,7 @@ import {
 } from "lucide-react-native";
 
 // Import modules, stores, and DB
-import { startBackgroundService, stopBackgroundService } from "../../../modules/cellular-diagnostics";
+import { startBackgroundService, stopBackgroundService, setPowerSaverEnabled } from "../../../modules/cellular-diagnostics";
 import { useAppStore } from "../../store/useAppStore";
 import { db } from "../../database/db";
 import { networkHistory, NetworkHistorySelect, automationRules, AutomationRuleSelect } from "../../database/schema";
@@ -83,6 +83,19 @@ export default function SettingsScreen() {
       }
     } catch (e) {
       console.error("Failed to toggle service status:", e);
+    }
+  };
+
+  const handleTogglePowerSaver = (val: boolean) => {
+    try {
+      const success = setPowerSaverEnabled(val);
+      if (success) {
+        updateSettings({ powerSaverEnabled: val });
+      } else {
+        Alert.alert("Error", "Could not sync power saver state with native module.");
+      }
+    } catch (e) {
+      console.error("Failed to toggle power saver:", e);
     }
   };
 
@@ -178,6 +191,21 @@ export default function SettingsScreen() {
               onValueChange={handleToggleTracking}
               trackColor={{ false: "#1e293b", true: "#0ea5e9" }}
               thumbColor={settings.backgroundTrackingEnabled ? "#f8fafc" : "#64748b"}
+            />
+          </View>
+
+          <View className="flex-row justify-between items-center py-2.5 border-t border-slate-800/40 mt-2">
+            <View className="flex-1 pr-4">
+              <Text className="text-slate-200 font-semibold text-sm">Power Saver Mode</Text>
+              <Text className="text-slate-400 text-xs mt-0.5 leading-relaxed">
+                Relaxes scanning rate from 10s to 60s and pauses background location tracking when device is stationary.
+              </Text>
+            </View>
+            <Switch
+              value={settings.powerSaverEnabled}
+              onValueChange={handleTogglePowerSaver}
+              trackColor={{ false: "#1e293b", true: "#0ea5e9" }}
+              thumbColor={settings.powerSaverEnabled ? "#f8fafc" : "#64748b"}
             />
           </View>
         </View>

@@ -47,6 +47,7 @@ const zustandStorage: StateStorage = {
 
 interface AppSettings {
   backgroundTrackingEnabled: boolean;
+  powerSaverEnabled: boolean;
   pingIntervalMs: number;
   weakSignalThresholdDbm: number;
   slowSpeedThresholdMbps: number;
@@ -61,6 +62,7 @@ interface AppStore {
 
 const DEFAULT_SETTINGS: AppSettings = {
   backgroundTrackingEnabled: false,
+  powerSaverEnabled: false,
   pingIntervalMs: 2000,
   weakSignalThresholdDbm: -105,
   slowSpeedThresholdMbps: 10,

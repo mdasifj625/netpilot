@@ -120,21 +120,23 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Permission Banner */}
+        {/* Premium Location Explainer Card */}
         {permissionGranted === false && (
-          <View className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 mb-5 flex-row gap-3 items-center">
-            <AlertTriangle size={24} color="#f59e0b" />
-            <View className="flex-1">
-              <Text className="text-sm font-semibold text-amber-200">Location Access Needed</Text>
-              <Text className="text-xs text-amber-400 mt-0.5">
-                Android restricts network and carrier details without location permissions.
-              </Text>
+          <View className="bg-slate-900 border border-amber-500/35 rounded-3xl p-5 mb-5 shadow-lg" style={{ gap: 12 }}>
+            <View className="flex-row items-center gap-2.5">
+              <AlertTriangle size={20} color="#f59e0b" />
+              <Text className="text-sm font-bold text-amber-200">Why does NetPilot need Location?</Text>
             </View>
+            <Text className="text-slate-400 text-xs leading-relaxed">
+              Android security policies map wireless network access points (Wi-Fi SSIDs/MACs) and cell tower identifiers (PCIs/CIDs) directly to physical locations. 
+              {"\n\n"}
+              To protect privacy, Google restricts apps from querying signal strengths or searching local network bands unless you actively authorize Location access. NetPilot performs all sweeps 100% locally on your device; your data is never sent to any cloud server.
+            </Text>
             <TouchableOpacity 
               onPress={requestPermission} 
-              className="bg-amber-500 px-3 py-1.5 rounded-lg active:bg-amber-600"
+              className="bg-amber-500 py-2.5 rounded-xl items-center justify-center active:bg-amber-600 mt-2"
             >
-              <Text className="text-xs font-bold text-slate-950">Grant</Text>
+              <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">Enable Location Access</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -274,8 +276,12 @@ export default function DashboardScreen() {
               const success = launchRadioInfo();
               if (!success) {
                 Alert.alert(
-                  "Intent Blocked",
-                  "Your device manufacturer has blocked direct access to the hidden RadioInfo interface (*#*#4636#*#*)."
+                  "RadioInfo Menu Blocked",
+                  "Direct access to hidden RadioInfo menu (*#*#4636#*#*) is restricted on this device.\n\nManual settings path:\nSettings → Mobile Network → SIMs → Preferred Network Type",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Open Mobile Settings", onPress: () => launchMobileNetworkSettings() }
+                  ]
                 );
               }
             }}
@@ -290,8 +296,12 @@ export default function DashboardScreen() {
               const success = launchSamsungBandSelection();
               if (!success) {
                 Alert.alert(
-                  "Not Supported",
-                  "Samsung band-lock menu is only available on Samsung Galaxy devices."
+                  "Samsung Menu Blocked",
+                  "Samsung hidden settings activity is restricted or not supported on this model.\n\nManual settings path:\nSettings → Mobile Network → SIMs → Preferred Network Type",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Open Mobile Settings", onPress: () => launchMobileNetworkSettings() }
+                  ]
                 );
               }
             }}

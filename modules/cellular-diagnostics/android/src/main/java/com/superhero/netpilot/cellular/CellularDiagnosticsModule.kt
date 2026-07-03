@@ -55,6 +55,12 @@ class CellularDiagnosticsModule : Module() {
       context.stopService(intent)
       return@Function true
     }
+
+    Function("setPowerSaverEnabled") { enabled: Boolean ->
+      val prefs = context.getSharedPreferences("netpilot_prefs", Context.MODE_PRIVATE)
+      prefs.edit().putBoolean("power_saver_enabled", enabled).apply()
+      return@Function true
+    }
   }
 
   private fun getRSRP(): Int? {

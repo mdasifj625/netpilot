@@ -22,9 +22,13 @@ import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import kotlin.math.abs
 
-class BackgroundService : Service() {
+class BackgroundService : Service(), SensorEventListener {
   private val CHANNEL_ID = "netpilot_telemetry_channel"
   private val NOTIFICATION_ID = 4636
   private var scheduler: ScheduledExecutorService? = null
@@ -35,6 +39,15 @@ class BackgroundService : Service() {
   
   private var currentLocation: Location? = null
   private var locationManager: LocationManager? = null
+
+  // Accelerometer states for motion detection
+  private var sensorManager: SensorManager? = null
+  private var accelerometer: Sensor? = null
+  private var isStationary = false
+  private var lastAcceleration = 0f
+  private var currentAcceleration = 0f
+  private var shake = 0f
+  private var lastRunTime = 0L
 
   private val locationListener = object : LocationListener {
     override fun onLocationChanged(location: Location) {
@@ -50,16 +63,25 @@ class BackgroundService : Service() {
     createNotificationChannel()
     initializeDatabase()
     startTelemetryListeners()
+    initializeSensor()
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     val notification = buildTelemetryNotification("Initializing background logger...", "—")
     startForeground(NOTIFICATION_ID, notification)
     
-    // Start active background scheduler (Runs every 10 seconds to evaluate adaptive thresholds)
+    // Start active background scheduler
     scheduler = Executors.newSingleThreadScheduledExecutor()
     scheduler?.scheduleAtFixedRate({
-      evaluateAdaptiveLogging()
+      val prefs = getSharedPreferences("netpilot_prefs", Context.MODE_PRIVATE)
+      val powerSaver = prefs.getBoolean("power_saver_enabled", false)
+      val now = System.currentTimeMillis()
+      val intervalLimit = if (powerSaver) 60000L else 10000L
+
+      if (now - lastRunTime >= intervalLimit) {
+        lastRunTime = now
+        evaluateAdaptiveLogging()
+      }
     }, 10, 10, TimeUnit.SECONDS)
 
     return START_STICKY
@@ -69,7 +91,8 @@ class BackgroundService : Service() {
     scheduler?.shutdown()
     try {
       locationManager?.removeUpdates(locationListener)
-    } catch (e: SecurityException) {
+      sensorManager?.unregisterListener(this)
+    } catch (e: Exception) {
       // Ignore
     }
     database?.close()
@@ -78,6 +101,54 @@ class BackgroundService : Service() {
 
   override fun onBind(intent: Intent?): IBinder? {
     return null
+  }
+
+  private fun initializeSensor() {
+    try {
+      sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+      accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+      sensorManager?.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL)
+    } catch (e: Exception) {
+      e.printStackTrace()
+    }
+  }
+
+  override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+  override fun onSensorChanged(event: SensorEvent?) {
+    if (event == null || event.sensor.type != Sensor.TYPE_ACCELEROMETER) return
+    val x = event.values[0]
+    val y = event.values[1]
+    val z = event.values[2]
+
+    lastAcceleration = currentAcceleration
+    currentAcceleration = Math.sqrt((x * x + y * y + z * z).toDouble()).toFloat()
+    val delta = currentAcceleration - lastAcceleration
+    shake = shake * 0.9f + delta
+
+    // Power Saver Mode specific dynamic location pause
+    val prefs = getSharedPreferences("netpilot_prefs", Context.MODE_PRIVATE)
+    val powerSaver = prefs.getBoolean("power_saver_enabled", false)
+
+    if (powerSaver) {
+      val movementThreshold = 0.4f
+      val wasStationary = isStationary
+      isStationary = abs(shake) < movementThreshold
+
+      if (isStationary != wasStationary) {
+        if (isStationary) {
+          // Device is static, remove location listener updates
+          try {
+            locationManager?.removeUpdates(locationListener)
+          } catch (e: SecurityException) {
+            // Ignore
+          }
+        } else {
+          // Device has started moving, resume GPS listeners
+          startTelemetryListeners()
+        }
+      }
+    }
   }
 
   private fun createNotificationChannel() {
