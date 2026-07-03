@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, ScrollView, Switch, TouchableOpacity, Alert, TextInput } from "react-native";
+import { View, Text, ScrollView, Switch, TouchableOpacity, Alert, TextInput, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
 import { desc, eq } from "drizzle-orm";
@@ -32,6 +32,10 @@ export default function SettingsScreen() {
   const [operator, setOperator] = useState<"lt" | "gt">("lt");
   const [value, setValue] = useState("");
   const [actionType, setActionType] = useState<"notification" | "log">("notification");
+
+  // CSV Export States
+  const [showCsvModal, setShowCsvModal] = useState(false);
+  const [rawCsv, setRawCsv] = useState("");
 
   const fetchLogs = async () => {
     try {
@@ -128,6 +132,45 @@ export default function SettingsScreen() {
         }
       ]
     );
+  };
+
+  const handleExportCSV = async () => {
+    try {
+      const allLogs = await db
+        .select()
+        .from(networkHistory)
+        .orderBy(desc(networkHistory.timestamp));
+
+      if (allLogs.length === 0) {
+        Alert.alert("No Data", "There is no logged telemetry data to export.");
+        return;
+      }
+
+      const headers = "id,timestamp,carrier,network_type,signal_dbm,download_mbps,upload_mbps,ping_ms,latitude,longitude\n";
+      const rows = allLogs.map((log: any) => {
+        const timeStr = new Date(log.timestamp).toISOString();
+        return `${log.id},"${timeStr}","${log.carrier || "WiFi"}","${log.networkType}",${log.signal ?? ""},${log.download ?? ""},${log.upload ?? ""},${log.ping ?? ""},${log.latitude ?? ""},${log.longitude ?? ""}`;
+      }).join("\n");
+
+      const csvString = headers + rows;
+
+      if (Platform.OS === "web") {
+        const blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", "netpilot_telemetry.csv");
+        link.style.visibility = "hidden";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else {
+        setRawCsv(csvString);
+        setShowCsvModal(true);
+      }
+    } catch (e) {
+      console.error("Failed to compile CSV logs:", e);
+    }
   };
 
   const handleAddRule = async () => {
@@ -259,11 +302,18 @@ export default function SettingsScreen() {
               <History size={18} color="#818cf8" />
               <Text className="text-sm font-bold text-slate-200">Recent SQLite Logs</Text>
             </View>
-            {logs.length > 0 && (
-              <TouchableOpacity onPress={handleClearLogs} className="p-1">
-                <Trash2 size={16} color="#ef4444" />
-              </TouchableOpacity>
-            )}
+            <View className="flex-row items-center gap-2">
+              {logs.length > 0 && (
+                <>
+                  <TouchableOpacity onPress={handleExportCSV} className="p-1 px-2.5 bg-slate-800 border border-slate-700/60 rounded-lg active:bg-slate-700">
+                    <Text className="text-indigo-400 font-extrabold text-[9px] uppercase tracking-wider">Export</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={handleClearLogs} className="p-1">
+                    <Trash2 size={16} color="#ef4444" />
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
           </View>
 
           {logs.length > 0 ? (
@@ -433,6 +483,44 @@ export default function SettingsScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* CSV Native Export Modal */}
+      {showCsvModal && (
+        <View className="absolute inset-0 bg-slate-950/80 items-center justify-center p-6 z-50">
+          <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 w-full max-w-sm max-h-[80%] shadow-2xl" style={{ gap: 14 }}>
+            <View className="flex-row justify-between items-center border-b border-slate-800/60 pb-3">
+              <Text className="text-slate-100 font-bold text-sm">CSV Export Data</Text>
+              <TouchableOpacity 
+                onPress={() => setShowCsvModal(false)}
+                className="bg-slate-800 p-1.5 rounded-full active:bg-slate-700"
+              >
+                <Text className="text-slate-400 font-black text-xs px-1">X</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text className="text-slate-400 text-3xs leading-relaxed">
+              Select and copy the raw CSV coordinates log text below to import into your spreadsheet or GIS mapping software.
+            </Text>
+
+            <TextInput
+              multiline
+              value={rawCsv}
+              editable={false}
+              selectTextOnFocus
+              className="bg-slate-950 border border-slate-800 rounded-2xl p-3 text-slate-300 font-mono text-[9px] h-48 text-left align-top"
+            />
+
+            <TouchableOpacity 
+              onPress={() => {
+                Alert.alert("Text Selected", "Tap and hold inside the box to copy the full CSV log.");
+              }}
+              className="bg-sky-500 py-2.5 rounded-xl items-center justify-center active:bg-sky-600"
+            >
+              <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">Select All Logs</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }

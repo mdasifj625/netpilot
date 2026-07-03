@@ -19,9 +19,15 @@ import {
   Sliders, 
   Cpu, 
   Globe, 
-  Signal,
-  CheckCircle,
-  HelpCircle
+  Signal, 
+  CheckCircle, 
+  HelpCircle,
+  Laptop,
+  Smartphone,
+  Router,
+  Server,
+  Tablet,
+  Tv
 } from "lucide-react-native";
 
 // Import custom native modules
@@ -52,6 +58,31 @@ export default function WifiScreen() {
 
   // LAN Scanner State
   const [lanDevices, setLanDevices] = useState<DiscoveredDevice[]>([]);
+
+  const getDeviceIcon = (hostname: string | null) => {
+    if (!hostname) return <Cpu size={16} color="#818cf8" />;
+    const host = hostname.toLowerCase();
+    
+    if (host.includes("gateway") || host.includes("router") || host.includes("modem") || host.includes("ap")) {
+      return <Router size={16} color="#0ea5e9" />;
+    }
+    if (host.includes("iphone") || host.includes("phone") || host.includes("android") || host.includes("galaxy") || host.includes("pixel")) {
+      return <Smartphone size={16} color="#34d399" />;
+    }
+    if (host.includes("ipad") || host.includes("tablet")) {
+      return <Tablet size={16} color="#a78bfa" />;
+    }
+    if (host.includes("tv") || host.includes("cast") || host.includes("player")) {
+      return <Tv size={16} color="#f472b6" />;
+    }
+    if (host.includes("macbook") || host.includes("pc") || host.includes("desktop") || host.includes("laptop") || host.includes("win")) {
+      return <Laptop size={16} color="#38bdf8" />;
+    }
+    if (host.includes("nas") || host.includes("server") || host.includes("cloud")) {
+      return <Server size={16} color="#fbbf24" />;
+    }
+    return <Cpu size={16} color="#818cf8" />;
+  };
   const [lanProgress, setLanProgress] = useState(0);
   const [isLanScanning, setIsLanScanning] = useState(false);
 
@@ -357,11 +388,16 @@ export default function WifiScreen() {
               contentContainerStyle={{ paddingBottom: 24 }}
               renderItem={({ item }) => (
                 <View className="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-3 flex-row items-center justify-between shadow-md">
-                  <View className="flex-1 pr-3">
-                    <Text className="text-slate-200 font-bold text-sm">{item.ip}</Text>
-                    <Text className="text-slate-500 font-medium text-xs mt-0.5" numberOfLines={1}>
-                      {item.hostname || "Unknown Device"}
-                    </Text>
+                  <View className="flex-row items-center gap-3.5 flex-1 pr-3">
+                    <View className="p-2.5 bg-slate-950 border border-slate-800/80 rounded-xl">
+                      {getDeviceIcon(item.hostname)}
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-slate-200 font-bold text-sm">{item.ip}</Text>
+                      <Text className="text-slate-500 font-medium text-xs mt-0.5" numberOfLines={1}>
+                        {item.hostname || "Unknown Host"}
+                      </Text>
+                    </View>
                   </View>
                   
                   <View className="items-end">

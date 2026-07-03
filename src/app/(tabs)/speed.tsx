@@ -23,6 +23,61 @@ import { getCellularDetails } from "../../../modules/cellular-diagnostics";
 import { db } from "../../database/db";
 import { networkHistory } from "../../database/schema";
 import { useAppStore } from "../../store/useAppStore";
+import Svg, { Path, Circle, Line, Text as SvgText, Defs, LinearGradient, Stop } from "react-native-svg";
+
+const Speedometer = ({ speed }: { speed: number }) => {
+  const maxSpeed = 150;
+  const angle = -90 + Math.min(1, speed / maxSpeed) * 180;
+  
+  return (
+    <View className="items-center justify-center relative my-4">
+      <Svg width="200" height="120" viewBox="0 0 200 120">
+        <Defs>
+          <LinearGradient id="speedGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <Stop offset="0%" stopColor="#38bdf8" />
+            <Stop offset="50%" stopColor="#818cf8" />
+            <Stop offset="100%" stopColor="#ec4899" />
+          </LinearGradient>
+        </Defs>
+        <Path
+          d="M 20 110 A 80 80 0 0 1 180 110"
+          fill="none"
+          stroke="#1e293b"
+          strokeWidth="12"
+          strokeLinecap="round"
+        />
+        <Path
+          d="M 20 110 A 80 80 0 0 1 180 110"
+          fill="none"
+          stroke="url(#speedGrad)"
+          strokeWidth="12"
+          strokeLinecap="round"
+          strokeDasharray="251"
+          strokeDashoffset={251 - Math.min(1, speed / maxSpeed) * 251}
+        />
+        <Circle cx="100" cy="110" r="10" fill="#0f172a" stroke="#818cf8" strokeWidth="3" />
+        <Line
+          x1="100"
+          y1="110"
+          x2="100"
+          y2="40"
+          stroke="#0ea5e9"
+          strokeWidth="4"
+          strokeLinecap="round"
+          transform={`rotate(${angle}, 100, 110)`}
+        />
+        <SvgText x="20" y="125" fill="#64748b" fontSize="8" fontWeight="bold" textAnchor="middle">0</SvgText>
+        <SvgText x="100" y="20" fill="#64748b" fontSize="8" fontWeight="bold" textAnchor="middle">75</SvgText>
+        <SvgText x="180" y="125" fill="#64748b" fontSize="8" fontWeight="bold" textAnchor="middle">150+</SvgText>
+      </Svg>
+      
+      <View className="absolute bottom-0 items-center">
+        <Text className="text-3xl font-black text-slate-50">{speed.toFixed(1)}</Text>
+        <Text className="text-slate-500 font-bold text-[9px] uppercase tracking-widest mt-0.5">Mbps</Text>
+      </View>
+    </View>
+  );
+};
 
 type TestStatus = "idle" | "ping" | "download" | "upload" | "finished";
 
@@ -147,29 +202,23 @@ export default function SpeedScreen() {
             <View className={`absolute top-10 w-44 h-44 rounded-full filter blur-3xl opacity-15 animate-pulse ${status === "download" ? "bg-sky-500" : "bg-indigo-500"}`} />
           )}
 
-          {/* Core Speed Circle */}
-          <View className="relative w-52 h-52 justify-center items-center rounded-full border-4 border-slate-800/80 bg-slate-950/50 shadow-inner">
-            <Gauge size={48} color={status === "download" ? "#0ea5e9" : status === "upload" ? "#818cf8" : "#475569"} />
-            <Text className="text-4xl font-black text-slate-50 mt-2">
-              {currentSpeed.toFixed(1)}
-            </Text>
-            <Text className="text-slate-500 font-bold text-[10px] uppercase tracking-widest mt-1">Mbps</Text>
-            
-            {status !== "idle" && status !== "finished" && (
-              <View className="absolute bottom-6 w-32 bg-slate-900 border border-slate-800 h-2 rounded-full overflow-hidden">
-                <View 
-                  style={{ width: `${progress * 100}%` }}
-                  className={`h-full ${status === "download" ? "bg-sky-500" : "bg-indigo-400"}`}
-                />
-              </View>
-            )}
+          {/* Core Speedometer Gauge */}
+          <Speedometer speed={currentSpeed} />
 
-            {status !== "idle" && (
-              <Text className="absolute bottom-10 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                {status.toUpperCase()}
-              </Text>
-            )}
-          </View>
+          {status !== "idle" && status !== "finished" && (
+            <View className="w-44 bg-slate-950 border border-slate-800 h-2.5 rounded-full overflow-hidden mt-3 shadow-inner">
+              <View 
+                style={{ width: `${progress * 100}%` }}
+                className={`h-full ${status === "download" ? "bg-sky-500" : "bg-indigo-400"}`}
+              />
+            </View>
+          )}
+
+          {status !== "idle" && (
+            <Text className="text-[10px] font-black text-sky-400 uppercase tracking-widest mt-2">
+              {status.toUpperCase()}
+            </Text>
+          )}
 
           {/* Action Trigger Button */}
           <TouchableOpacity 
