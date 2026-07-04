@@ -23,11 +23,17 @@ export interface PingFinishedEvent {
   jitterMs: number;
 }
 
+export interface PingProgressEvent {
+  pingMs: number;
+  progress: number;
+}
+
 const emitter = NetworkSpeed ? new EventEmitter(NetworkSpeed) : null;
 
 // Local fallback listener storage for Web/iOS
 const fallbackListeners = {
   ping: new Set<(event: PingFinishedEvent) => void>(),
+  pingProgress: new Set<(event: PingProgressEvent) => void>(),
   progress: new Set<(event: SpeedTestProgressEvent) => void>(),
   finished: new Set<(event: SpeedTestFinishedEvent) => void>()
 };
@@ -97,6 +103,18 @@ export function addPingFinishedListener(
   };
 }
 
+export function addPingProgressListener(
+  listener: (event: PingProgressEvent) => void
+): { remove(): void } {
+  if (emitter) {
+    return (emitter as any).addListener('onPingProgress', listener);
+  }
+  fallbackListeners.pingProgress.add(listener);
+  return {
+    remove: () => { fallbackListeners.pingProgress.delete(listener); }
+  };
+}
+
 // High-fidelity Javascript Speed Test runner for Web & non-Android targets
 async function runJsFallbackSpeedTest(downloadUrl: string) {
   try {
@@ -108,18 +126,24 @@ async function runJsFallbackSpeedTest(downloadUrl: string) {
     for (let i = 0; i < count; i++) {
       if (!isSimulating) return;
       const start = Date.now();
+      let latency = 0;
       try {
         // Fetch with no-cache and head method to test raw network socket latency
         await fetch(downloadUrl, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
-        const latency = Date.now() - start;
-        latencies.push(latency);
-        totalLatency += latency;
+        latency = Date.now() - start;
       } catch (e) {
         // Network timeout fallback
-        const mockLatency = Math.round(18 + Math.random() * 12);
-        latencies.push(mockLatency);
-        totalLatency += mockLatency;
+        latency = Math.round(18 + Math.random() * 12);
       }
+      latencies.push(latency);
+      totalLatency += latency;
+
+      // Emit intermediate ping progress
+      fallbackListeners.pingProgress.forEach(cb => cb({
+        pingMs: latency,
+        progress: (i + 1) / count
+      }));
+
       await new Promise(r => {
         const t = setTimeout(r, 100);
         simulateTimeouts.push(t);

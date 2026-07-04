@@ -1,22 +1,18 @@
-import React, { useState, useEffect } from "react";
-import { View, Text, ScrollView, TouchableOpacity, Alert, Platform } from "react-native";
+import React, { useState, useEffect, useCallback } from "react";
+import { View, Text, ScrollView, TouchableOpacity, Alert, Platform, Animated } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
 import { desc, isNotNull } from "drizzle-orm";
-import { 
-  ArrowDown, 
-  ArrowUp, 
-  Clock, 
-  Zap 
-} from "lucide-react-native";
+import { ArrowDown, ArrowUp, Clock, Zap } from "lucide-react-native";
 
 // Import custom native modules and DB
-import { 
-  startSpeedTest, 
-  stopSpeedTest, 
-  addPingFinishedListener, 
-  addSpeedFinishedListener, 
-  addSpeedProgressListener 
+import {
+  startSpeedTest,
+  stopSpeedTest,
+  addPingFinishedListener,
+  addPingProgressListener,
+  addSpeedFinishedListener,
+  addSpeedProgressListener,
 } from "../../../modules/network-speed";
 import { getCellularDetails } from "../../../modules/cellular-diagnostics";
 import { db } from "../../database/db";
@@ -24,20 +20,139 @@ import { networkHistory } from "../../database/schema";
 import { useAppStore } from "../../store/useAppStore";
 import Svg, { Path, Circle, Line, Text as SvgText, Defs, LinearGradient, Stop } from "react-native-svg";
 
-const Speedometer = ({ speed }: { speed: number }) => {
-  const maxSpeed = 160;
-  const angle = -135 + Math.min(1, speed / maxSpeed) * 270;
-  const ticks = [0, 20, 40, 60, 80, 100, 120, 140, 160];
-  const labelTicks = [0, 40, 80, 120, 160];
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-  const getTickCoords = (value: number, radius: number) => {
-    const tickAngle = -135 + (value / maxSpeed) * 270;
-    const angleRad = (tickAngle - 90) * Math.PI / 180;
+const Speedometer = ({ speed }: { speed: number }) => {
+  const startAngle = 135;
+  const sweepAngle = 270;
+  const r = 95;
+  const cx = 120;
+  const cy = 120;
+
+  // Set up animated value for smooth transitions
+  const animatedSpeed = React.useRef(new Animated.Value(0)).current;
+  const [displaySpeed, setDisplaySpeed] = React.useState(0);
+  const rippleAnim = React.useRef(new Animated.Value(0)).current;
+
+  React.useEffect(() => {
+    // Add listener to update display speed state on every frame of animation
+    const listenerId = animatedSpeed.addListener(({ value }) => {
+      setDisplaySpeed(value);
+    });
+
+    Animated.timing(animatedSpeed, {
+      toValue: speed,
+      duration: 250, // 250ms transition for fluid motion
+      useNativeDriver: false, // required for SVG properties and intermediate values
+    }).start();
+
+    return () => {
+      animatedSpeed.removeListener(listenerId);
+    };
+  }, [speed, animatedSpeed]);
+
+  // Handle ripple animation loop
+  const isMoving = speed > 0.5;
+  React.useEffect(() => {
+    if (isMoving) {
+      rippleAnim.setValue(0);
+      Animated.loop(
+        Animated.timing(rippleAnim, {
+          toValue: 1,
+          duration: 1400,
+          useNativeDriver: false,
+        })
+      ).start();
+    } else {
+      rippleAnim.setValue(0);
+      rippleAnim.stopAnimation();
+    }
+  }, [isMoving, rippleAnim]);
+
+  // Determine dynamic scale (max speed limits: 100, 200, 500, or 1000 Mbps)
+  const getSpeedometerScale = (currentSpeed: number) => {
+    let max = 100;
+    if (currentSpeed > 450) max = 1000;
+    else if (currentSpeed > 180) max = 500;
+    else if (currentSpeed > 90) max = 200;
+
+    const ticksCount = 10;
+    const ticks: number[] = [];
+    for (let i = 0; i <= ticksCount; i++) {
+      ticks.push(Math.round((max / ticksCount) * i));
+    }
+
+    const labelTicks: number[] = [];
+    const labelsCount = 5;
+    for (let i = 0; i <= labelsCount; i++) {
+      labelTicks.push(Math.round((max / labelsCount) * i));
+    }
+
+    return { max, ticks, labelTicks };
+  };
+
+  const { max: maxSpeed, ticks, labelTicks } = getSpeedometerScale(speed > 0 ? speed : displaySpeed);
+
+  // Calculate coordinates for the background track arc (270 degrees)
+  const startRad = (startAngle * Math.PI) / 180;
+  const endRad = ((startAngle + sweepAngle) * Math.PI) / 180;
+  const trackStartX = cx + r * Math.cos(startRad);
+  const trackStartY = cy + r * Math.sin(startRad);
+  const trackEndX = cx + r * Math.cos(endRad);
+  const trackEndY = cy + r * Math.sin(endRad);
+
+  const trackD = `M ${trackStartX.toFixed(2)} ${trackStartY.toFixed(2)} A ${r} ${r} 0 1 1 ${trackEndX.toFixed(2)} ${trackEndY.toFixed(2)}`;
+
+  // Calculate coordinates for the active speed arc
+  const currentSweep = Math.min(1, displaySpeed / maxSpeed) * sweepAngle;
+  const activeEndRad = ((startAngle + currentSweep) * Math.PI) / 180;
+  const activeEndX = cx + r * Math.cos(activeEndRad);
+  const activeEndY = cy + r * Math.sin(activeEndRad);
+  const largeArcFlag = currentSweep > 180 ? 1 : 0;
+
+  const activeD =
+    displaySpeed > 0.1
+      ? `M ${trackStartX.toFixed(2)} ${trackStartY.toFixed(2)} A ${r} ${r} 0 ${largeArcFlag} 1 ${activeEndX.toFixed(2)} ${activeEndY.toFixed(2)}`
+      : "";
+
+  // Calculate coordinates for the inner subtle rim
+  const innerR = 78;
+  const innerStartX = cx + innerR * Math.cos(startRad);
+  const innerStartY = cy + innerR * Math.sin(startRad);
+  const innerEndX = cx + innerR * Math.cos(endRad);
+  const innerEndY = cy + innerR * Math.sin(endRad);
+  const innerD = `M ${innerStartX.toFixed(2)} ${innerStartY.toFixed(2)} A ${innerR} ${innerR} 0 1 1 ${innerEndX.toFixed(2)} ${innerEndY.toFixed(2)}`;
+
+  const needleAngle = -135 + Math.min(1, displaySpeed / maxSpeed) * sweepAngle;
+
+  const getTickCoords = (value: number, tickRadius: number) => {
+    const tickAngle = -135 + (value / maxSpeed) * sweepAngle;
+    const angleRad = ((tickAngle - 90) * Math.PI) / 180;
     return {
-      x: 120 + radius * Math.cos(angleRad),
-      y: 120 + radius * Math.sin(angleRad)
+      x: cx + tickRadius * Math.cos(angleRad),
+      y: cy + tickRadius * Math.sin(angleRad),
     };
   };
+
+  const rippleR1 = rippleAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [14, 76],
+  });
+
+  const rippleO1 = rippleAnim.interpolate({
+    inputRange: [0, 0.8, 1],
+    outputRange: [0.55, 0.25, 0],
+  });
+
+  const rippleR2 = rippleAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [14, 48],
+  });
+
+  const rippleO2 = rippleAnim.interpolate({
+    inputRange: [0, 0.8, 1],
+    outputRange: [0.35, 0.15, 0],
+  });
 
   return (
     <View className="items-center justify-center relative my-4">
@@ -54,50 +169,46 @@ const Speedometer = ({ speed }: { speed: number }) => {
           </LinearGradient>
         </Defs>
 
+        {/* Dynamic circular ripple wave particles */}
+        {speed > 0.5 && (
+          <>
+            <AnimatedCircle
+              cx="120"
+              cy="120"
+              r={rippleR1}
+              fill="none"
+              stroke="#38bdf8"
+              strokeWidth="1.5"
+              opacity={rippleO1}
+            />
+            <AnimatedCircle
+              cx="120"
+              cy="120"
+              r={rippleR2}
+              fill="none"
+              stroke="#818cf8"
+              strokeWidth="1"
+              opacity={rippleO2}
+            />
+          </>
+        )}
+
         {/* Outer Background Track Arc */}
-        <Circle
-          cx="120"
-          cy="120"
-          r="95"
-          stroke="url(#trackGrad)"
-          strokeWidth="12"
-          fill="none"
-          strokeDasharray="447.67 149.22"
-          transform="rotate(135, 120, 120)"
-          strokeLinecap="round"
-        />
+        <Path d={trackD} stroke="url(#trackGrad)" strokeWidth="12" fill="none" strokeLinecap="round" />
 
         {/* Active Speed Arc */}
-        <Circle
-          cx="120"
-          cy="120"
-          r="95"
-          stroke="url(#speedGrad)"
-          strokeWidth="12"
-          fill="none"
-          strokeDasharray="447.67 149.22"
-          strokeDashoffset={447.67 - Math.min(1, speed / maxSpeed) * 447.67}
-          transform="rotate(135, 120, 120)"
-          strokeLinecap="round"
-        />
+        {activeD !== "" && (
+          <Path d={activeD} stroke="url(#speedGrad)" strokeWidth="12" fill="none" strokeLinecap="round" />
+        )}
 
         {/* Inner subtle rim */}
-        <Circle
-          cx="120"
-          cy="120"
-          r="78"
-          stroke="#1e293b"
-          strokeWidth="1"
-          fill="none"
-          strokeDasharray="367.57 122.52"
-          transform="rotate(135, 120, 120)"
-        />
+        <Path d={innerD} stroke="#1e293b" strokeWidth="1" fill="none" />
 
         {/* Ticks */}
         {ticks.map((val) => {
           const startCoords = getTickCoords(val, 84);
           const endCoords = getTickCoords(val, 91);
-          const isActive = speed >= val && speed > 0;
+          const isActive = displaySpeed >= val && displaySpeed > 0;
           return (
             <Line
               key={val}
@@ -114,7 +225,7 @@ const Speedometer = ({ speed }: { speed: number }) => {
         {/* Label numbers inside the gauge */}
         {labelTicks.map((val) => {
           const coords = getTickCoords(val, 64);
-          const isActive = speed >= val && speed > 0;
+          const isActive = displaySpeed >= val && displaySpeed > 0;
           return (
             <SvgText
               key={val}
@@ -134,7 +245,7 @@ const Speedometer = ({ speed }: { speed: number }) => {
         <Path
           d="M 116 120 L 120 32 L 124 120 Z"
           fill="#38bdf8"
-          transform={`rotate(${angle}, 120, 120)`}
+          transform={`rotate(${needleAngle}, 120, 120)`}
           stroke="#0284c7"
           strokeWidth="0.5"
         />
@@ -146,8 +257,14 @@ const Speedometer = ({ speed }: { speed: number }) => {
 
       {/* Speedometer text readout */}
       <View className="absolute bottom-8 items-center">
-        <Text className="text-3xl font-black text-slate-50">{speed.toFixed(1)}</Text>
+        <Text className="text-3xl font-black text-slate-50">{displaySpeed.toFixed(1)}</Text>
         <Text className="text-slate-500 font-bold text-[9px] uppercase tracking-widest mt-0.5">Mbps</Text>
+        {/* Dynamic Scale Indicator Badge */}
+        <View className="bg-slate-950/80 border border-slate-800/80 rounded-full px-2 py-0.5 mt-1.5">
+          <Text className="text-slate-400 font-mono text-[7px] uppercase tracking-wider font-extrabold">
+            Max {maxSpeed}M
+          </Text>
+        </View>
       </View>
     </View>
   );
@@ -162,28 +279,22 @@ const SpeedHistoryChart = ({ data }: { data: any[] }) => {
     );
   }
 
-  const maxVal = Math.max(...data.map(d => Math.max(d.download || 10, d.upload || 10)), 10);
+  const maxVal = Math.max(...data.map((d) => Math.max(d.download || 10, d.upload || 10)), 10);
 
   return (
     <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 mb-5 shadow-lg">
       <Text className="text-sm font-bold text-slate-200 mb-4">Throughput Trends (Last 10 Tests)</Text>
-      
+
       <View className="flex-row items-end justify-between h-32 pt-2 px-2 relative border-b border-slate-800">
         {data.map((item, idx) => {
           const dlHeight = Math.min(100, Math.round(((item.download || 0) / maxVal) * 100));
           const ulHeight = Math.min(100, Math.round(((item.upload || 0) / maxVal) * 100));
-          
+
           return (
             <View key={item.id || idx} className="items-center flex-1 mx-1.5" style={{ gap: 2 }}>
               <View className="flex-row items-end h-24 gap-1 w-full justify-center">
-                <View 
-                  style={{ height: `${dlHeight}%` }}
-                  className="w-2.5 bg-sky-500 rounded-t-sm"
-                />
-                <View 
-                  style={{ height: `${ulHeight}%` }}
-                  className="w-2.5 bg-indigo-400 rounded-t-sm"
-                />
+                <View style={{ height: `${dlHeight}%` }} className="w-2.5 bg-sky-500 rounded-t-sm" />
+                <View style={{ height: `${ulHeight}%` }} className="w-2.5 bg-indigo-400 rounded-t-sm" />
               </View>
               <Text className="text-[8px] text-slate-500 font-bold mt-1">#{data.length - idx}</Text>
             </View>
@@ -216,7 +327,47 @@ export default function SpeedScreen() {
   const [uploadSpeed, setUploadSpeed] = useState<number>(0);
   const [history, setHistory] = useState<any[]>([]);
 
-  const fetchSpeedHistory = async () => {
+  // Animation values for UI/UX enhancements
+  const pulseAnim = React.useRef(new Animated.Value(1)).current;
+  const fadeAnim = React.useRef(new Animated.Value(0)).current;
+
+  // Pulse animation loop during active test states
+  React.useEffect(() => {
+    if (status === "ping" || status === "download" || status === "upload") {
+      pulseAnim.setValue(1.0);
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 0.4,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1.0,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      pulseAnim.setValue(1.0);
+    }
+  }, [status, pulseAnim]);
+
+  // Fade-in animation for rating card on test finish
+  React.useEffect(() => {
+    if (status === "finished") {
+      Animated.timing(fadeAnim, {
+        toValue: 1.0,
+        duration: 600,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      fadeAnim.setValue(0);
+    }
+  }, [status, fadeAnim]);
+
+  const fetchSpeedHistory = useCallback(async () => {
     try {
       const list = await db
         .select()
@@ -228,20 +379,76 @@ export default function SpeedScreen() {
     } catch (e) {
       console.error("Failed to query speed test history:", e);
     }
-  };
+  }, []);
 
   useFocusEffect(
     React.useCallback(() => {
       fetchSpeedHistory();
-    }, [])
+    }, [fetchSpeedHistory])
   );
 
-  const DOWNLOAD_URL = settings.customDownloadUrl.trim() !== ""
-    ? settings.customDownloadUrl.trim()
-    : "https://speed.cloudflare.com/__down?bytes=15000000";
-  const UPLOAD_URL = settings.customUploadUrl.trim() !== ""
-    ? settings.customUploadUrl.trim()
-    : "https://speed.cloudflare.com/__up";
+  const DOWNLOAD_URL =
+    settings.customDownloadUrl.trim() !== ""
+      ? settings.customDownloadUrl.trim()
+      : "https://speed.cloudflare.com/__down?bytes=250000000";
+  const UPLOAD_URL =
+    settings.customUploadUrl.trim() !== "" ? settings.customUploadUrl.trim() : "https://speed.cloudflare.com/__up";
+
+  const downloadSpeedRef = React.useRef(downloadSpeed);
+  const pingRef = React.useRef(ping);
+
+  // Keep refs updated with current state values
+  useEffect(() => {
+    downloadSpeedRef.current = downloadSpeed;
+  }, [downloadSpeed]);
+
+  useEffect(() => {
+    pingRef.current = ping;
+  }, [ping]);
+
+  const saveTestResult = useCallback(
+    async (finalDownload: number, finalUpload: number) => {
+      try {
+        let cellCarrier = "WiFi Link";
+        let connType = "WiFi";
+
+        // Safely access cellular details on native platforms
+        if (Platform.OS !== "web") {
+          try {
+            const cell = getCellularDetails();
+            cellCarrier = cell?.carrier ?? "WiFi Link";
+            connType = cell?.networkType ?? "WiFi";
+          } catch {
+            // ignore
+          }
+        }
+
+        const finalPing = pingRef.current;
+        // Save speed test to local database
+        await db.insert(networkHistory).values({
+          timestamp: Date.now(),
+          signal: null,
+          carrier: cellCarrier,
+          networkType: connType,
+          download: finalDownload,
+          upload: finalUpload,
+          ping: finalPing,
+          latitude: null,
+          longitude: null,
+        });
+        fetchSpeedHistory();
+        console.log("Speed test record saved successfully.");
+      } catch (e) {
+        console.error("Failed to save speed test history:", e);
+      }
+    },
+    [fetchSpeedHistory]
+  );
+
+  const saveTestResultRef = React.useRef(saveTestResult);
+  useEffect(() => {
+    saveTestResultRef.current = saveTestResult;
+  }, [saveTestResult]);
 
   useEffect(() => {
     // Register native or fallback JS event listeners
@@ -250,6 +457,13 @@ export default function SpeedScreen() {
       setJitter(event.jitterMs);
       setStatus("download");
       setProgress(0);
+    });
+
+    const subPingProgress = addPingProgressListener((event) => {
+      if (event.pingMs > 0) {
+        setPing(event.pingMs);
+      }
+      setProgress(event.progress);
     });
 
     const subProgress = addSpeedProgressListener((event) => {
@@ -272,53 +486,18 @@ export default function SpeedScreen() {
         setProgress(1);
 
         // Capture average speeds and save to database
-        saveTestResult(downloadSpeed, event.averageSpeedMbps);
+        saveTestResultRef.current(downloadSpeedRef.current, event.averageSpeedMbps);
       }
     });
 
     return () => {
       subPing.remove();
+      subPingProgress.remove();
       subProgress.remove();
       subFinished.remove();
       stopSpeedTest();
     };
-  }, [downloadSpeed, ping]);
-
-  const saveTestResult = async (finalDownload: number, finalUpload: number) => {
-    try {
-      let cellCarrier = "WiFi Link";
-      let connType = "WiFi";
-
-      // Safely access cellular details on native platforms
-      if (Platform.OS !== "web") {
-        try {
-          const cell = getCellularDetails();
-          cellCarrier = cell?.carrier ?? "WiFi Link";
-          connType = cell?.networkType ?? "WiFi";
-        } catch (err) {
-          // ignore
-        }
-      }
-
-      const finalPing = ping;
-      // Save speed test to local database
-      await db.insert(networkHistory).values({
-        timestamp: Date.now(),
-        signal: null,
-        carrier: cellCarrier,
-        networkType: connType,
-        download: finalDownload,
-        upload: finalUpload,
-        ping: finalPing,
-        latitude: null,
-        longitude: null,
-      });
-      fetchSpeedHistory();
-      console.log("Speed test record saved successfully.");
-    } catch (e) {
-      console.error("Failed to save speed test history:", e);
-    }
-  };
+  }, []);
 
   const handleStartTest = () => {
     if (status !== "idle" && status !== "finished") {
@@ -344,12 +523,16 @@ export default function SpeedScreen() {
     }
   };
 
-  // Determine pointer speed values for UI gauge
-  const currentSpeed = status === "download" ? downloadSpeed : status === "upload" ? uploadSpeed : status === "finished" ? downloadSpeed : 0;
+  // Determine pointer speed values for UI gauge. Reset to 0 when finished so the needle drops back down cleanly.
+  const currentSpeed = status === "download" ? downloadSpeed : status === "upload" ? uploadSpeed : 0;
 
   return (
     <SafeAreaView edges={["bottom"]} style={{ flex: 1, backgroundColor: "#020617" }} className="flex-1 bg-slate-950">
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 100 }} className="flex-1 px-4 py-2">
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 100 }}
+        className="flex-1 px-4 py-2"
+      >
         {/* Title */}
         <View className="mb-6 mt-4">
           <Text className="text-2xl font-bold text-slate-50">Speed Test</Text>
@@ -360,7 +543,9 @@ export default function SpeedScreen() {
         <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 mb-5 items-center py-8 shadow-lg relative overflow-hidden">
           {/* Animated Glow during active testing */}
           {(status === "download" || status === "upload") && (
-            <View className={`absolute top-10 w-44 h-44 rounded-full filter blur-3xl opacity-15 ${status === "download" ? "bg-sky-500" : "bg-indigo-500"}`} />
+            <View
+              className={`absolute top-10 w-44 h-44 rounded-full filter blur-3xl opacity-15 ${status === "download" ? "bg-sky-500" : "bg-indigo-500"}`}
+            />
           )}
 
           {/* Core Speedometer Gauge */}
@@ -368,7 +553,7 @@ export default function SpeedScreen() {
 
           {status !== "idle" && status !== "finished" && (
             <View className="w-44 bg-slate-950 border border-slate-800 h-2.5 rounded-full overflow-hidden mt-3 shadow-inner">
-              <View 
+              <View
                 style={{ width: `${progress * 100}%` }}
                 className={`h-full ${status === "download" ? "bg-sky-500" : "bg-indigo-400"}`}
               />
@@ -382,7 +567,7 @@ export default function SpeedScreen() {
           )}
 
           {/* Action Trigger Button */}
-          <TouchableOpacity 
+          <TouchableOpacity
             onPress={handleStartTest}
             className={`mt-6 px-12 py-3.5 rounded-full shadow-lg items-center justify-center ${
               status !== "idle" && status !== "finished"
@@ -399,7 +584,15 @@ export default function SpeedScreen() {
         {/* Speed test metrics details grid */}
         <View className="flex-row flex-wrap gap-4 mb-6">
           {/* Download Speed Card */}
-          <View className="flex-1 min-w-[45%] bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex-row items-center gap-3">
+          <Animated.View
+            style={{
+              borderColor:
+                status === "download" ? "#0ea5e9" : status === "finished" ? "rgba(14, 165, 233, 0.4)" : "#1e293b",
+              opacity: status === "download" ? pulseAnim : 1.0,
+              borderWidth: 1,
+            }}
+            className="flex-1 min-w-[45%] bg-slate-900 rounded-2xl p-4 shadow-md flex-row items-center gap-3"
+          >
             <View className="p-2 rounded-xl bg-sky-500/10 border border-sky-500/20">
               <ArrowDown size={20} color="#0ea5e9" />
             </View>
@@ -410,10 +603,18 @@ export default function SpeedScreen() {
                 {downloadSpeed > 0 && <Text className="text-xs font-semibold text-slate-400"> Mbps</Text>}
               </Text>
             </View>
-          </View>
+          </Animated.View>
 
           {/* Upload Speed Card */}
-          <View className="flex-1 min-w-[45%] bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex-row items-center gap-3">
+          <Animated.View
+            style={{
+              borderColor:
+                status === "upload" ? "#818cf8" : status === "finished" ? "rgba(129, 140, 248, 0.4)" : "#1e293b",
+              opacity: status === "upload" ? pulseAnim : 1.0,
+              borderWidth: 1,
+            }}
+            className="flex-1 min-w-[45%] bg-slate-900 rounded-2xl p-4 shadow-md flex-row items-center gap-3"
+          >
             <View className="p-2 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
               <ArrowUp size={20} color="#818cf8" />
             </View>
@@ -424,10 +625,18 @@ export default function SpeedScreen() {
                 {uploadSpeed > 0 && <Text className="text-xs font-semibold text-slate-400"> Mbps</Text>}
               </Text>
             </View>
-          </View>
+          </Animated.View>
 
           {/* Latency Ping Card */}
-          <View className="flex-1 min-w-[45%] bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex-row items-center gap-3">
+          <Animated.View
+            style={{
+              borderColor:
+                status === "ping" ? "#2dd4bf" : status === "finished" ? "rgba(45, 212, 191, 0.4)" : "#1e293b",
+              opacity: status === "ping" ? pulseAnim : 1.0,
+              borderWidth: 1,
+            }}
+            className="flex-1 min-w-[45%] bg-slate-900 rounded-2xl p-4 shadow-md flex-row items-center gap-3"
+          >
             <View className="p-2 rounded-xl bg-teal-500/10 border border-teal-500/20">
               <Clock size={20} color="#2dd4bf" />
             </View>
@@ -438,10 +647,18 @@ export default function SpeedScreen() {
                 {ping !== null && <Text className="text-xs font-semibold text-slate-400"> ms</Text>}
               </Text>
             </View>
-          </View>
+          </Animated.View>
 
           {/* Jitter Card */}
-          <View className="flex-1 min-w-[45%] bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex-row items-center gap-3">
+          <Animated.View
+            style={{
+              borderColor:
+                status === "ping" ? "#34d399" : status === "finished" ? "rgba(52, 211, 153, 0.4)" : "#1e293b",
+              opacity: status === "ping" ? pulseAnim : 1.0,
+              borderWidth: 1,
+            }}
+            className="flex-1 min-w-[45%] bg-slate-900 rounded-2xl p-4 shadow-md flex-row items-center gap-3"
+          >
             <View className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
               <Zap size={20} color="#34d399" />
             </View>
@@ -452,11 +669,116 @@ export default function SpeedScreen() {
                 {jitter !== null && <Text className="text-xs font-semibold text-slate-400"> ms</Text>}
               </Text>
             </View>
-          </View>
+          </Animated.View>
         </View>
+
+        {/* Audit Completion rating summary Card */}
+        {status === "finished" && (
+          <Animated.View
+            style={{ opacity: fadeAnim }}
+            className="bg-slate-900 border border-slate-800 rounded-3xl p-5 mb-5 shadow-lg relative overflow-hidden"
+          >
+            {/* Background rating highlight glow */}
+            <View
+              className={`absolute -right-10 -top-10 w-24 h-24 rounded-full filter blur-xl opacity-20 ${
+                downloadSpeed > 100 ? "bg-emerald-500" : downloadSpeed > 50 ? "bg-sky-500" : "bg-indigo-500"
+              }`}
+            />
+
+            <View className="flex-row items-center gap-2 mb-2">
+              <View className="p-1 rounded bg-slate-950 border border-slate-800">
+                <Text className="text-[10px]">🏆</Text>
+              </View>
+              <Text className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Network Rating</Text>
+            </View>
+            <Text
+              className={`text-sm font-black mt-1 ${
+                downloadSpeed > 100
+                  ? "text-emerald-400"
+                  : downloadSpeed > 50
+                    ? "text-sky-400"
+                    : downloadSpeed > 15
+                      ? "text-indigo-400"
+                      : "text-amber-500"
+              }`}
+            >
+              {downloadSpeed > 100
+                ? "Excellent Connection"
+                : downloadSpeed > 50
+                  ? "Good Connection"
+                  : downloadSpeed > 15
+                    ? "Standard Connection"
+                    : "Poor Connection"}
+            </Text>
+            <Text className="text-[10px] text-slate-400 mt-2 leading-4 font-semibold">
+              {downloadSpeed > 100
+                ? "Your network delivers ultra-fast download bandwidth and low latency. Ideal for intensive tasks like 4K/8K streaming, competitive gaming, and bulk file sharing."
+                : downloadSpeed > 50
+                  ? "Your network is fast and stable. Great for multiple HD video streams, clear video calls, and standard cloud backups."
+                  : downloadSpeed > 15
+                    ? "Your network provides basic broadband speeds. Suitable for daily web browsing, emails, and single-device streaming."
+                    : "Your network speed is currently constrained. You might experience buffering during high-definition video playback or multi-party video calls."}
+            </Text>
+          </Animated.View>
+        )}
 
         {/* Speed Test History Chart */}
         <SpeedHistoryChart data={history} />
+
+        {/* Speed Test History List */}
+        {history.length > 0 && (
+          <View style={{ gap: 10 }} className="mt-2">
+            <Text className="text-xs font-semibold text-slate-500 uppercase tracking-widest px-1">
+              Detailed Logs History
+            </Text>
+            {history
+              .slice()
+              .reverse()
+              .map((item, idx) => {
+                const timeString =
+                  new Date(item.timestamp).toLocaleDateString([], { month: "short", day: "numeric" }) +
+                  " " +
+                  new Date(item.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                return (
+                  <View
+                    key={item.id || idx}
+                    className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex-row items-center justify-between shadow-md"
+                  >
+                    <View className="flex-1 pr-3">
+                      <Text className="text-slate-200 font-bold text-xs">{item.carrier || "WiFi Link"}</Text>
+                      <Text className="text-slate-500 text-[10px] font-semibold mt-0.5">
+                        {item.networkType} • {timeString}
+                      </Text>
+                    </View>
+
+                    <View className="flex-row gap-4 items-center">
+                      <View className="items-end">
+                        <View className="flex-row items-center gap-1">
+                          <ArrowDown size={11} color="#0ea5e9" />
+                          <Text className="text-slate-200 font-black text-xs font-mono">
+                            {item.download?.toFixed(1)}
+                          </Text>
+                        </View>
+                        <View className="flex-row items-center gap-1 mt-0.5">
+                          <ArrowUp size={11} color="#818cf8" />
+                          <Text className="text-slate-400 font-semibold text-[10px] font-mono">
+                            {item.upload?.toFixed(1)}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {item.ping != null && (
+                        <View className="border-l border-slate-800/80 pl-3 items-center justify-center min-w-[40px]">
+                          <Text className="text-teal-400 font-black text-xs font-mono">{Math.round(item.ping)}</Text>
+                          <Text className="text-slate-500 text-[7px] uppercase font-bold tracking-wider">Ping</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );

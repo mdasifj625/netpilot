@@ -2,6 +2,8 @@ import { create } from "zustand";
 import { persist, StateStorage, createJSONStorage } from "zustand/middleware";
 import { Platform } from "react-native";
 
+import { createMMKV } from "react-native-mmkv";
+
 // Web Mock for MMKV utilizing standard browser localStorage
 class WebMMKV {
   private memoryStore: { [key: string]: string } = {};
@@ -22,7 +24,7 @@ class WebMMKV {
     return this.memoryStore[key];
   }
 
-  delete(key: string) {
+  remove(key: string) {
     if (typeof window !== "undefined" && window.localStorage) {
       window.localStorage.removeItem(key);
     } else {
@@ -31,20 +33,8 @@ class WebMMKV {
   }
 }
 
-// Load Native MMKV conditionally on mobile
-let NativeMMKV: any = null;
-if (Platform.OS !== "web") {
-  try {
-    NativeMMKV = require("react-native-mmkv").MMKV;
-  } catch (e) {
-    console.error("MMKV loading failed:", e);
-  }
-}
-
 // Initialize platform-specific storage instance
-export const appStorage = Platform.OS === "web" || !NativeMMKV
-  ? new WebMMKV()
-  : new NativeMMKV({ id: "netpilot-settings" });
+export const appStorage = Platform.OS === "web" ? new WebMMKV() : createMMKV({ id: "netpilot-settings" });
 
 // Create a custom storage wrapper for Zustand persistence middleware
 const zustandStorage: StateStorage = {
@@ -56,7 +46,7 @@ const zustandStorage: StateStorage = {
     return value ?? null;
   },
   removeItem: (name) => {
-    appStorage.delete(name);
+    appStorage.remove(name);
   },
 };
 

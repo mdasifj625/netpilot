@@ -1,61 +1,49 @@
-import React, { useState, useEffect } from "react";
-import { 
-  View, 
-  Text, 
-  ScrollView, 
-  TouchableOpacity, 
-  FlatList, 
-  ActivityIndicator,
-  Platform,
-  Alert,
-  Linking
-} from "react-native";
+import React, { useState, useEffect, useCallback } from "react";
+import { View, Text, ScrollView, TouchableOpacity, FlatList, ActivityIndicator, Alert, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
 import * as Location from "expo-location";
 import { resolveMacVendor } from "../../utils/macVendors";
-import { 
-  Wifi, 
-  Search, 
-  Network, 
-  RefreshCw, 
-  Sliders, 
-  Cpu, 
-  Globe, 
-  Signal, 
-  CheckCircle, 
-  HelpCircle,
+import {
+  Wifi,
+  Network,
+  RefreshCw,
+  Sliders,
+  Cpu,
+  Globe,
+  Signal,
+  CheckCircle,
   Laptop,
   Smartphone,
   Router,
   Server,
   Tablet,
   Tv,
-  AlertTriangle
+  AlertTriangle,
 } from "lucide-react-native";
 
 // Import custom native modules
-import { 
-  getConnectedWifiInfo, 
-  getScanResults, 
-  startScan as startWifiScan, 
-  WifiScanResult, 
-  ConnectedWifiInfo 
+import {
+  getConnectedWifiInfo,
+  getScanResults,
+  startScan as startWifiScan,
+  WifiScanResult,
+  ConnectedWifiInfo,
 } from "../../../modules/wifi-analyzer";
 
-import { 
-  startScan as startLanScan, 
-  stopScan as stopLanScan, 
-  addDeviceFoundListener, 
-  addScanFinishedListener, 
-  addScanProgressListener, 
+import {
+  startScan as startLanScan,
+  stopScan as stopLanScan,
+  addDeviceFoundListener,
+  addScanFinishedListener,
+  addScanProgressListener,
   DiscoveredDevice,
-  scanDevicePorts
+  scanDevicePorts,
 } from "../../../modules/lan-scanner";
 
 export default function WifiScreen() {
   const [activeTab, setActiveTab] = useState<"wifi" | "lan">("wifi");
-  
+
   // WiFi State
   const [connectedInfo, setConnectedInfo] = useState<ConnectedWifiInfo | null>(null);
   const [scanResults, setScanResults] = useState<WifiScanResult[]>([]);
@@ -73,11 +61,11 @@ export default function WifiScreen() {
       setOpenPorts([]);
       return;
     }
-    
+
     setSelectedIp(ip);
     setIsScanningPorts(true);
     setOpenPorts([]);
-    
+
     try {
       const ports = await scanDevicePorts(ip);
       setOpenPorts(ports);
@@ -91,11 +79,17 @@ export default function WifiScreen() {
   const getDeviceIcon = (hostname: string | null) => {
     if (!hostname) return <Cpu size={16} color="#818cf8" />;
     const host = hostname.toLowerCase();
-    
+
     if (host.includes("gateway") || host.includes("router") || host.includes("modem") || host.includes("ap")) {
       return <Router size={16} color="#0ea5e9" />;
     }
-    if (host.includes("iphone") || host.includes("phone") || host.includes("android") || host.includes("galaxy") || host.includes("pixel")) {
+    if (
+      host.includes("iphone") ||
+      host.includes("phone") ||
+      host.includes("android") ||
+      host.includes("galaxy") ||
+      host.includes("pixel")
+    ) {
       return <Smartphone size={16} color="#34d399" />;
     }
     if (host.includes("ipad") || host.includes("tablet")) {
@@ -104,7 +98,13 @@ export default function WifiScreen() {
     if (host.includes("tv") || host.includes("cast") || host.includes("player")) {
       return <Tv size={16} color="#f472b6" />;
     }
-    if (host.includes("macbook") || host.includes("pc") || host.includes("desktop") || host.includes("laptop") || host.includes("win")) {
+    if (
+      host.includes("macbook") ||
+      host.includes("pc") ||
+      host.includes("desktop") ||
+      host.includes("laptop") ||
+      host.includes("win")
+    ) {
       return <Laptop size={16} color="#38bdf8" />;
     }
     if (host.includes("nas") || host.includes("server") || host.includes("cloud")) {
@@ -116,48 +116,7 @@ export default function WifiScreen() {
   const [isLanScanning, setIsLanScanning] = useState(false);
   const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null);
 
-  const checkPermission = async () => {
-    try {
-      const response = await Location.getForegroundPermissionsAsync();
-      const isFine = response.status === "granted" && response.android?.accuracy === "fine";
-      setPermissionGranted(isFine);
-      return isFine;
-    } catch (e) {
-      setPermissionGranted(false);
-      return false;
-    }
-  };
-
-  const requestPermission = async () => {
-    try {
-      const response = await Location.requestForegroundPermissionsAsync();
-      const isFine = response.status === "granted" && response.android?.accuracy === "fine";
-      setPermissionGranted(isFine);
-      if (isFine) {
-        updateWifiData();
-      } else {
-        if (response.status === "granted") {
-          Alert.alert(
-            "Precise Location Required",
-            "You enabled 'Approximate Location'. To scan local WiFi networks and read signal strengths, NetPilot needs 'Precise Location'.\n\nPlease enable it in Settings.",
-            [
-              { text: "Cancel", style: "cancel" },
-              { text: "Open Settings", onPress: () => Linking.openSettings() }
-            ]
-          );
-        } else {
-          Alert.alert(
-            "Permission Required",
-            "Location permission is required to read WiFi details and network hardware states."
-          );
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const updateWifiData = () => {
+  const updateWifiData = useCallback(() => {
     setIsWifiScanning(true);
     try {
       startWifiScan();
@@ -172,7 +131,48 @@ export default function WifiScreen() {
     } finally {
       setIsWifiScanning(false);
     }
-  };
+  }, []);
+
+  const checkPermission = useCallback(async () => {
+    try {
+      const response = await Location.getForegroundPermissionsAsync();
+      const isFine = response.status === "granted" && response.android?.accuracy === "fine";
+      setPermissionGranted(isFine);
+      return isFine;
+    } catch {
+      setPermissionGranted(false);
+      return false;
+    }
+  }, []);
+
+  const requestPermission = useCallback(async () => {
+    try {
+      const response = await Location.requestForegroundPermissionsAsync();
+      const isFine = response.status === "granted" && response.android?.accuracy === "fine";
+      setPermissionGranted(isFine);
+      if (isFine) {
+        updateWifiData();
+      } else {
+        if (response.status === "granted") {
+          Alert.alert(
+            "Precise Location Required",
+            "You enabled 'Approximate Location'. To scan local WiFi networks and read signal strengths, NetPilot needs 'Precise Location'.\n\nPlease enable it in Settings.",
+            [
+              { text: "Cancel", style: "cancel" },
+              { text: "Open Settings", onPress: () => Linking.openSettings() },
+            ]
+          );
+        } else {
+          Alert.alert(
+            "Permission Required",
+            "Location permission is required to read WiFi details and network hardware states."
+          );
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, [updateWifiData]);
 
   // Telephony/WiFi loop
   useFocusEffect(
@@ -199,7 +199,7 @@ export default function WifiScreen() {
         clearInterval(interval);
         stopLanScan();
       };
-    }, [isLanScanning])
+    }, [isLanScanning, checkPermission, requestPermission, updateWifiData])
   );
 
   // Set up LAN Scanner listeners
@@ -254,25 +254,51 @@ export default function WifiScreen() {
     }
   };
 
-  // Helper to rate WiFi Channels based on overlapping networks
+  // Helper to rate WiFi Channels based on overlapping networks dynamically for 2.4 GHz and 5 GHz
   const getChannelRecommendations = () => {
-    // 2.4 GHz channels: 1, 6, 11 are non-overlapping
-    const channels = [1, 6, 11];
-    const congestion = { 1: 0, 6: 0, 11: 0 };
-    
-    scanResults.forEach((ap) => {
-      if (ap.frequency >= 2400 && ap.frequency <= 2500) {
-        if (ap.channel >= 1 && ap.channel <= 4) congestion[1]++;
-        else if (ap.channel >= 5 && ap.channel <= 8) congestion[6]++;
-        else if (ap.channel >= 9 && ap.channel <= 13) congestion[11]++;
-      }
-    });
+    const is5G = connectedInfo?.frequency && connectedInfo.frequency >= 5000;
 
-    const ranked = channels.sort((a, b) => congestion[a as 1|6|11] - congestion[b as 1|6|11]);
-    return {
-      recommended: ranked[0],
-      scores: congestion
-    };
+    if (is5G) {
+      const channels5G = [36, 40, 44, 48, 149, 153, 157, 161];
+      const congestion5G: Record<number, number> = { 36: 0, 40: 0, 44: 0, 48: 0, 149: 0, 153: 0, 157: 0, 161: 0 };
+
+      scanResults.forEach((ap) => {
+        if (ap.frequency >= 5000) {
+          const ch = ap.channel;
+          if (ch in congestion5G) {
+            congestion5G[ch]++;
+          }
+        }
+      });
+
+      const ranked = channels5G.sort((a, b) => congestion5G[a] - congestion5G[b]);
+      return {
+        band: "5 GHz",
+        recommended: ranked[0],
+        scores: congestion5G,
+        channels: channels5G,
+      };
+    } else {
+      const channels2G = [1, 6, 11];
+      const congestion2G: Record<number, number> = { 1: 0, 6: 0, 11: 0 };
+
+      scanResults.forEach((ap) => {
+        if (ap.frequency >= 2400 && ap.frequency <= 2500) {
+          const ch = ap.channel;
+          if (ch >= 1 && ch <= 4) congestion2G[1]++;
+          else if (ch >= 5 && ch <= 8) congestion2G[6]++;
+          else if (ch >= 9 && ch <= 13) congestion2G[11]++;
+        }
+      });
+
+      const sorted2G = channels2G.sort((a, b) => congestion2G[a] - congestion2G[b]);
+      return {
+        band: "2.4 GHz",
+        recommended: sorted2G[0],
+        scores: congestion2G,
+        channels: channels2G,
+      };
+    }
   };
 
   const channelInfo = getChannelRecommendations();
@@ -281,16 +307,20 @@ export default function WifiScreen() {
     <SafeAreaView edges={["bottom"]} style={{ flex: 1, backgroundColor: "#020617" }} className="flex-1 bg-slate-950">
       {/* Precise Location Explainer Card */}
       {permissionGranted === false && (
-        <View className="bg-slate-900 border border-amber-500/35 rounded-3xl p-5 mx-4 mt-4 shadow-lg" style={{ gap: 12 }}>
+        <View
+          className="bg-slate-900 border border-amber-500/35 rounded-3xl p-5 mx-4 mt-4 shadow-lg"
+          style={{ gap: 12 }}
+        >
           <View className="flex-row items-center gap-2.5">
             <AlertTriangle size={20} color="#f59e0b" />
             <Text className="text-sm font-bold text-amber-200">Precise Location Required</Text>
           </View>
           <Text className="text-slate-400 text-xs leading-relaxed">
-            Android restricts apps from reading WiFi access points or signal metrics unless you authorize Precise Location access. Your data is 100% private.
+            Android restricts apps from reading WiFi access points or signal metrics unless you authorize Precise
+            Location access. Your data is 100% private.
           </Text>
-          <TouchableOpacity 
-            onPress={requestPermission} 
+          <TouchableOpacity
+            onPress={requestPermission}
             className="bg-amber-500 py-2.5 rounded-xl items-center justify-center active:bg-amber-600 mt-2"
           >
             <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">Enable Location Settings</Text>
@@ -300,20 +330,24 @@ export default function WifiScreen() {
 
       {/* Sub Tabs Toggle */}
       <View className="flex-row mx-4 mt-4 bg-slate-900 border border-slate-800 rounded-xl p-1">
-        <TouchableOpacity 
+        <TouchableOpacity
           onPress={() => setActiveTab("wifi")}
           className={`flex-1 flex-row items-center justify-center py-2.5 rounded-lg gap-2 ${activeTab === "wifi" ? "bg-sky-500" : "bg-transparent"}`}
         >
           <Wifi size={16} color={activeTab === "wifi" ? "#ffffff" : "#94a3b8"} />
-          <Text className={`font-bold text-xs ${activeTab === "wifi" ? "text-white" : "text-slate-400"}`}>WiFi Analyzer</Text>
+          <Text className={`font-bold text-xs ${activeTab === "wifi" ? "text-white" : "text-slate-400"}`}>
+            WiFi Analyzer
+          </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           onPress={() => setActiveTab("lan")}
           className={`flex-1 flex-row items-center justify-center py-2.5 rounded-lg gap-2 ${activeTab === "lan" ? "bg-sky-500" : "bg-transparent"}`}
         >
           <Network size={16} color={activeTab === "lan" ? "#ffffff" : "#94a3b8"} />
-          <Text className={`font-bold text-xs ${activeTab === "lan" ? "text-white" : "text-slate-400"}`}>LAN Devices</Text>
+          <Text className={`font-bold text-xs ${activeTab === "lan" ? "text-white" : "text-slate-400"}`}>
+            LAN Devices
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -329,6 +363,53 @@ export default function WifiScreen() {
                 </View>
                 <Text className="text-slate-400 font-mono text-xs">{connectedInfo.bssid}</Text>
               </View>
+
+              {/* Signal Strength Metaphor Bar */}
+              {connectedInfo.level != null && (
+                <View className="mb-4 bg-slate-950/40 border border-slate-800/40 p-3.5 rounded-2xl">
+                  <View className="flex-row justify-between items-center mb-2">
+                    <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Signal Strength
+                    </Text>
+                    <Text
+                      className={`text-xs font-black ${
+                        connectedInfo.level >= -55
+                          ? "text-emerald-400"
+                          : connectedInfo.level >= -70
+                            ? "text-teal-400"
+                            : connectedInfo.level >= -85
+                              ? "text-amber-400"
+                              : "text-rose-400"
+                      }`}
+                    >
+                      {connectedInfo.level} dBm •{" "}
+                      {connectedInfo.level >= -55
+                        ? "Excellent"
+                        : connectedInfo.level >= -70
+                          ? "Good"
+                          : connectedInfo.level >= -85
+                            ? "Fair"
+                            : "Poor"}
+                    </Text>
+                  </View>
+                  <View className="w-full bg-slate-900 h-2 rounded-full overflow-hidden">
+                    <View
+                      style={{
+                        width: `${Math.max(0, Math.min(100, (connectedInfo.level + 100) * 1.66))}%`, // Maps -100..-40 to 0..100%
+                      }}
+                      className={`h-full ${
+                        connectedInfo.level >= -55
+                          ? "bg-emerald-500"
+                          : connectedInfo.level >= -70
+                            ? "bg-teal-400"
+                            : connectedInfo.level >= -85
+                              ? "bg-amber-400"
+                              : "bg-rose-500"
+                      }`}
+                    />
+                  </View>
+                </View>
+              )}
 
               <View style={{ gap: 10 }}>
                 <View className="flex-row justify-between">
@@ -366,11 +447,13 @@ export default function WifiScreen() {
             <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-lg">
               <View className="flex-row items-center gap-2 mb-3">
                 <Sliders size={18} color="#0ea5e9" />
-                <Text className="text-sm font-bold text-slate-200">Channel Assessment (2.4 GHz)</Text>
+                <Text className="text-sm font-bold text-slate-200">Channel Assessment ({channelInfo.band})</Text>
               </View>
-              
+
               <Text className="text-slate-400 text-xs mb-4 leading-relaxed">
-                Channels 1, 6, and 11 do not overlap. The recommendation selects the channel with the lowest count of neighboring networks.
+                {channelInfo.band === "5 GHz"
+                  ? "Assesses congestion on common 5 GHz channels. Recommends the channel block with the least neighboring traffic."
+                  : "Channels 1, 6, and 11 do not overlap on 2.4 GHz. Recommends the channel with the lowest count of neighboring networks."}
               </Text>
 
               <View className="bg-slate-950/40 rounded-2xl border border-slate-800/50 p-4" style={{ gap: 12 }}>
@@ -380,20 +463,14 @@ export default function WifiScreen() {
                     <Text className="text-emerald-400 font-black text-xs">Channel {channelInfo.recommended}</Text>
                   </View>
                 </View>
-                
+
                 <View className="border-t border-slate-800/50 pt-2.5" style={{ gap: 8 }}>
-                  <View className="flex-row justify-between items-center">
-                    <Text className="text-slate-500 text-xs">Ch 1 neighbors</Text>
-                    <Text className="text-slate-300 font-semibold text-xs">{channelInfo.scores[1]} APs</Text>
-                  </View>
-                  <View className="flex-row justify-between items-center">
-                    <Text className="text-slate-500 text-xs">Ch 6 neighbors</Text>
-                    <Text className="text-slate-300 font-semibold text-xs">{channelInfo.scores[6]} APs</Text>
-                  </View>
-                  <View className="flex-row justify-between items-center">
-                    <Text className="text-slate-500 text-xs">Ch 11 neighbors</Text>
-                    <Text className="text-slate-300 font-semibold text-xs">{channelInfo.scores[11]} APs</Text>
-                  </View>
+                  {channelInfo.channels.map((ch) => (
+                    <View key={ch} className="flex-row justify-between items-center">
+                      <Text className="text-slate-500 text-xs">Ch {ch} neighbors</Text>
+                      <Text className="text-slate-300 font-semibold text-xs">{channelInfo.scores[ch]} APs</Text>
+                    </View>
+                  ))}
                 </View>
               </View>
             </View>
@@ -401,17 +478,30 @@ export default function WifiScreen() {
 
           {/* Scanned Access Points */}
           <View className="flex-row justify-between items-center">
-            <Text className="text-xs font-semibold text-slate-500 uppercase tracking-widest px-1">Discovered Networks</Text>
-            <TouchableOpacity onPress={updateWifiData} className="flex-row items-center gap-1">
-              <RefreshCw size={12} color="#94a3b8" />
-              <Text className="text-xs text-slate-400 font-medium">Scan</Text>
+            <Text className="text-xs font-semibold text-slate-500 uppercase tracking-widest px-1">
+              Discovered Networks
+            </Text>
+            <TouchableOpacity
+              onPress={updateWifiData}
+              disabled={isWifiScanning}
+              className="flex-row items-center gap-1.5"
+            >
+              {isWifiScanning ? (
+                <ActivityIndicator size="small" color="#38bdf8" style={{ transform: [{ scale: 0.7 }] }} />
+              ) : (
+                <RefreshCw size={12} color="#94a3b8" />
+              )}
+              <Text className="text-xs text-slate-400 font-medium">{isWifiScanning ? "Scanning..." : "Scan"}</Text>
             </TouchableOpacity>
           </View>
 
           {scanResults.length > 0 ? (
             <View style={{ gap: 12 }}>
               {scanResults.map((item) => (
-                <View key={item.bssid} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex-row items-center justify-between shadow-md">
+                <View
+                  key={item.bssid}
+                  className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex-row items-center justify-between shadow-md"
+                >
                   <View className="flex-1 pr-3">
                     <Text className="text-slate-200 font-bold text-sm" numberOfLines={1}>
                       {item.ssid || "Hidden Network"}
@@ -424,11 +514,16 @@ export default function WifiScreen() {
                       <Text className="text-slate-400 font-medium text-[10px]">{item.wifiStandard}</Text>
                     </View>
                   </View>
-                  
+
                   <View className="items-end gap-1">
                     <View className="flex-row items-center gap-1">
-                      <Signal size={12} color={item.level >= -70 ? "#10b981" : item.level >= -85 ? "#f59e0b" : "#f43f5e"} />
-                      <Text className={`font-black text-xs ${item.level >= -70 ? "text-emerald-400" : item.level >= -85 ? "text-amber-400" : "text-rose-400"}`}>
+                      <Signal
+                        size={12}
+                        color={item.level >= -70 ? "#10b981" : item.level >= -85 ? "#f59e0b" : "#f43f5e"}
+                      />
+                      <Text
+                        className={`font-black text-xs ${item.level >= -70 ? "text-emerald-400" : item.level >= -85 ? "text-amber-400" : "text-rose-400"}`}
+                      >
                         {item.level} dBm
                       </Text>
                     </View>
@@ -460,14 +555,11 @@ export default function WifiScreen() {
 
             {isLanScanning && (
               <View className="w-full bg-slate-950/40 border border-slate-800/40 h-2.5 rounded-full overflow-hidden mb-5">
-                <View 
-                  style={{ width: `${lanProgress * 100}%` }}
-                  className="h-full bg-indigo-500"
-                />
+                <View style={{ width: `${lanProgress * 100}%` }} className="h-full bg-indigo-500" />
               </View>
             )}
 
-            <TouchableOpacity 
+            <TouchableOpacity
               onPress={handleStartLanScan}
               className={`w-full py-3 rounded-xl justify-center items-center ${isLanScanning ? "bg-slate-800 border border-slate-700 active:bg-slate-700" : "bg-indigo-500 active:bg-indigo-600"}`}
             >
@@ -490,7 +582,7 @@ export default function WifiScreen() {
               renderItem={({ item }) => {
                 const isSelected = selectedIp === item.ip;
                 return (
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     onPress={() => handleDevicePress(item.ip)}
                     activeOpacity={0.8}
                     className="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-3 shadow-md"
@@ -507,7 +599,7 @@ export default function WifiScreen() {
                           </Text>
                         </View>
                       </View>
-                      
+
                       <View className="items-end">
                         <Text className="text-indigo-400 font-bold text-xs">{item.ping.toFixed(1)} ms</Text>
                         <Text className="text-slate-500 text-[9px] font-semibold mt-0.5">Response Time</Text>
@@ -516,7 +608,9 @@ export default function WifiScreen() {
 
                     {isSelected && (
                       <View className="mt-4 pt-3.5 border-t border-slate-800/60" style={{ gap: 8 }}>
-                        <Text className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Common Port Audit</Text>
+                        <Text className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                          Common Port Audit
+                        </Text>
                         {isScanningPorts ? (
                           <ActivityIndicator size="small" color="#0ea5e9" className="my-1.5" />
                         ) : (
@@ -528,19 +622,23 @@ export default function WifiScreen() {
                                 53: "DNS",
                                 80: "HTTP",
                                 443: "HTTPS",
-                                8080: "Web Alt"
+                                8080: "Web Alt",
                               };
                               return (
-                                <View 
-                                  key={port} 
+                                <View
+                                  key={port}
                                   className={`px-3 py-1.5 rounded-xl border flex-row items-center gap-1.5 ${
-                                    isOpen 
-                                      ? "bg-emerald-500/10 border-emerald-500/25" 
+                                    isOpen
+                                      ? "bg-emerald-500/10 border-emerald-500/25"
                                       : "bg-slate-950/40 border-slate-800/60 opacity-60"
                                   }`}
                                 >
-                                  <View className={`w-1.5 h-1.5 rounded-full ${isOpen ? "bg-emerald-400" : "bg-slate-600"}`} />
-                                  <Text className={`font-bold text-[9px] uppercase tracking-wider ${isOpen ? "text-emerald-400" : "text-slate-500"}`}>
+                                  <View
+                                    className={`w-1.5 h-1.5 rounded-full ${isOpen ? "bg-emerald-400" : "bg-slate-600"}`}
+                                  />
+                                  <Text
+                                    className={`font-bold text-[9px] uppercase tracking-wider ${isOpen ? "text-emerald-400" : "text-slate-500"}`}
+                                  >
                                     {port} • {portNames[port]}
                                   </Text>
                                 </View>
@@ -559,7 +657,7 @@ export default function WifiScreen() {
               <Globe size={32} color="#475569" className="mb-3" />
               <Text className="text-slate-400 font-semibold text-sm text-center">No Devices Scanned</Text>
               <Text className="text-slate-500 text-xs text-center mt-1.5 max-w-[240px]">
-                Click 'Start LAN Discovery' to map and ping all devices connected to this local router.
+                Click Start LAN Discovery to map and ping all devices connected to this local router.
               </Text>
             </View>
           )}

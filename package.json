@@ -39,8 +39,11 @@
     "@tailwindcss/postcss": "^4.3.2",
     "@types/react": "~19.2.2",
     "drizzle-kit": "^0.31.10",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "^57.0.0",
     "lightningcss": "^1.32.0",
     "postcss": "^8.5.16",
+    "prettier": "^3.9.4",
     "tailwindcss": "^4.3.2",
     "typescript": "~6.0.3"
   },
@@ -56,7 +59,17 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "prebuild": "npx expo prebuild --no-install",
+    "typecheck": "tsc --noEmit",
+    "lint:js": "eslint src --fix",
+    "lint:kt": "./bin/ktlint \"modules/**/*.kt\"",
+    "lint:kt:format": "./bin/ktlint -F \"modules/**/*.kt\"",
+    "lint": "yarn typecheck && yarn lint:js && yarn lint:kt",
+    "format:js": "prettier --write \"src/**/*.{ts,tsx}\" \"*.{js,mjs,json}\"",
+    "format:js:check": "prettier --check \"src/**/*.{ts,tsx}\" \"*.{js,mjs,json}\"",
+    "format:kt": "./bin/ktlint -F \"modules/**/*.kt\"",
+    "format": "yarn format:js && yarn format:kt",
+    "format:check": "yarn format:js:check && yarn lint:kt"
   },
   "private": true
 }

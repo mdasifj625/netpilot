@@ -1,14 +1,18 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { View, Text, TouchableOpacity, Platform, ScrollView, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { desc, isNotNull } from "drizzle-orm";
-import { 
-  ArrowLeft, 
-  MapPin, 
-  Layers, 
-  Radio, 
-  Gauge
+import {
+  ArrowLeft,
+  MapPin,
+  Layers,
+  Radio,
+  Gauge,
+  Navigation,
+  ChevronUp,
+  ChevronDown,
+  Clock,
 } from "lucide-react-native";
 import * as Location from "expo-location";
 
@@ -16,15 +20,7 @@ import * as Location from "expo-location";
 import { db } from "../database/db";
 import { networkHistory, NetworkHistorySelect } from "../database/schema";
 
-// Platform-conditional require for react-native-webview to prevent Web crash
-let WebView: any = null;
-if (Platform.OS !== "web") {
-  try {
-    WebView = require("react-native-webview").WebView;
-  } catch (e) {
-    console.error("react-native-webview loading failed:", e);
-  }
-}
+import { WebView } from "react-native-webview";
 
 type MapMode = "signal" | "speed";
 type VisualType = "heatmap" | "pins";
@@ -36,62 +32,16 @@ export default function CoverageMapScreen() {
   const [logs, setLogs] = useState<NetworkHistorySelect[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentCoords, setCurrentCoords] = useState<{ latitude: number; longitude: number } | null>(null);
-  
+  const [showLogsList, setShowLogsList] = useState(false);
+
   const webViewRef = useRef<any>(null);
+  const currentCoordsRef = useRef(currentCoords);
 
   useEffect(() => {
-    fetchLogsAndLocation();
-  }, []);
+    currentCoordsRef.current = currentCoords;
+  }, [currentCoords]);
 
-  useEffect(() => {
-    if (logs.length > 0) {
-      triggerMapUpdate(logs, mode, visual);
-    }
-  }, [logs, mode, visual, currentCoords]);
-
-  const fetchLogsAndLocation = async () => {
-    try {
-      setLoading(true);
-      
-      // 1. Fetch current GPS location for map centering
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === "granted") {
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        const newCoords = {
-          latitude: loc.coords.latitude,
-          longitude: loc.coords.longitude
-        };
-        setCurrentCoords(newCoords);
-        centerMapOn(newCoords.latitude, newCoords.longitude);
-      }
-
-      // 2. Fetch logged database records that have valid coordinates
-      const history = await db
-        .select()
-        .from(networkHistory)
-        .where(isNotNull(networkHistory.latitude))
-        .orderBy(desc(networkHistory.timestamp))
-        .limit(150);
-      
-      setLogs(history);
-
-      // If we don't have current location but have logs, center on the latest log
-      if (!currentCoords && history.length > 0 && history[0].latitude && history[0].longitude) {
-        const firstLogCoords = {
-          latitude: history[0].latitude,
-          longitude: history[0].longitude
-        };
-        setCurrentCoords(firstLogCoords);
-        centerMapOn(firstLogCoords.latitude, firstLogCoords.longitude);
-      }
-    } catch (e) {
-      console.error("Failed to compile map telemetry details:", e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const centerMapOn = (lat: number, lng: number) => {
+  const centerMapOn = useCallback((lat: number, lng: number) => {
     const js = `
       if (window.centerOn) {
         window.centerOn(${lat}, ${lng});
@@ -107,17 +57,59 @@ export default function CoverageMapScreen() {
     } else {
       webViewRef.current?.injectJavaScript(js);
     }
-  };
+  }, []);
 
-  const triggerMapUpdate = (currentLogs: any[], currentMode: string, currentVisual: string) => {
+  const fetchLogsAndLocation = useCallback(async () => {
+    try {
+      setLoading(true);
+
+      // 1. Fetch current GPS location for map centering
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === "granted") {
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        const newCoords = {
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+        };
+        setCurrentCoords(newCoords);
+        centerMapOn(newCoords.latitude, newCoords.longitude);
+      }
+
+      // 2. Fetch logged database records that have valid coordinates
+      const history = await db
+        .select()
+        .from(networkHistory)
+        .where(isNotNull(networkHistory.latitude))
+        .orderBy(desc(networkHistory.timestamp))
+        .limit(150);
+
+      setLogs(history);
+
+      // If we don't have current location but have logs, center on the latest log
+      if (!currentCoordsRef.current && history.length > 0 && history[0].latitude && history[0].longitude) {
+        const firstLogCoords = {
+          latitude: history[0].latitude,
+          longitude: history[0].longitude,
+        };
+        setCurrentCoords(firstLogCoords);
+        centerMapOn(firstLogCoords.latitude, firstLogCoords.longitude);
+      }
+    } catch (e) {
+      console.error("Failed to compile map telemetry details:", e);
+    } finally {
+      setLoading(false);
+    }
+  }, [centerMapOn]);
+
+  const triggerMapUpdate = useCallback((currentLogs: any[], currentMode: string, currentVisual: string) => {
     const js = `
       if (window.updateMapData) {
         window.updateMapData(
           ${JSON.stringify(currentLogs)},
           "${currentMode}",
           "${currentVisual}",
-          ${currentCoords?.latitude || "null"},
-          ${currentCoords?.longitude || "null"}
+          ${currentCoordsRef.current?.latitude || "null"},
+          ${currentCoordsRef.current?.longitude || "null"}
         );
       }
       true;
@@ -131,12 +123,24 @@ export default function CoverageMapScreen() {
     } else {
       webViewRef.current?.injectJavaScript(js);
     }
-  };
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchLogsAndLocation();
+    }, [fetchLogsAndLocation])
+  );
+
+  useEffect(() => {
+    if (logs.length > 0) {
+      triggerMapUpdate(logs, mode, visual);
+    }
+  }, [logs, mode, visual, triggerMapUpdate]);
 
   // Helper to generate self-contained Leaflet HTML
   const getMapHtml = (initialLogs: any[], initialMode: string, initialVisual: string) => {
     const centerLat = currentCoords?.latitude ?? 40.7128;
-    const centerLng = currentCoords?.longitude ?? -74.0060;
+    const centerLng = currentCoords?.longitude ?? -74.006;
     const hasCurrentLoc = currentCoords !== null;
 
     return `
@@ -303,10 +307,10 @@ export default function CoverageMapScreen() {
           if (log.latitude && log.longitude) {
             var color = getMarkerColor(log, mapMode);
             var title = (log.carrier || "WiFi") + " • " + (log.networkType || "Unknown");
-            var desc = mapMode === "signal" 
-              ? "Signal: " + (log.signal ? log.signal + " dBm" : "—") 
+            var desc = mapMode === "signal"
+              ? "Signal: " + (log.signal ? log.signal + " dBm" : "—")
               : "Download: " + (log.download ? log.download.toFixed(1) + " Mbps" : "—");
-            
+
             var popupContent = "<div><b>" + title + "</b><br/>" + desc + "<br/><span style='font-size:10px; color:#64748b;'>" + new Date(log.timestamp).toLocaleTimeString() + "</span></div>";
 
             L.circleMarker([log.latitude, log.longitude], {
@@ -352,9 +356,7 @@ export default function CoverageMapScreen() {
           <ArrowLeft size={22} color="#f8fafc" />
         </TouchableOpacity>
         <Text className="text-base font-bold text-slate-100">Coverage Tracking</Text>
-        <TouchableOpacity onPress={fetchLogsAndLocation} className="p-1">
-          <MapPin size={20} color="#0ea5e9" />
-        </TouchableOpacity>
+        <View style={{ width: 22 }} />
       </View>
 
       {/* Main Map Viewer Canvas */}
@@ -365,77 +367,175 @@ export default function CoverageMapScreen() {
           </View>
         ) : null}
 
+        {/* Map Frame (Web iframe or Native WebView) */}
         {Platform.OS === "web" ? (
-          /* Web Split View: Actual Map left, telemetry records list right */
-          <View className="w-full h-full flex-row">
-            <View className="flex-1 bg-slate-950 justify-center items-center relative overflow-hidden">
-              <iframe
-                srcDoc={getMapHtml(logs, mode, visual)}
-                style={{ width: "100%", height: "100%", border: "none" }}
-                ref={webViewRef as any}
-              />
-            </View>
-
-            {/* Right log details data list */}
-            <View className="w-80 bg-slate-900 p-4">
-              <Text className="text-slate-200 font-bold text-xs mb-3 uppercase tracking-wider">Telemetry Points ({logs.length})</Text>
-              <ScrollView className="flex-1" contentContainerStyle={{ gap: 8 }}>
-                {logs.map((log) => (
-                  <View key={log.id} className="bg-slate-950 border border-slate-800 rounded-xl p-2.5">
-                    <View className="flex-row justify-between items-center">
-                      <Text className="text-slate-300 font-bold text-xs">{log.carrier || "WiFi"}</Text>
-                      <Text className="text-slate-500 text-[9px]">{new Date(log.timestamp).toLocaleTimeString()}</Text>
-                    </View>
-                    <View className="flex-row justify-between mt-1.5 items-end">
-                      <Text className="text-slate-500 font-mono text-[9px]">{log.latitude?.toFixed(4)}, {log.longitude?.toFixed(4)}</Text>
-                      <Text className={`font-black text-xs ${log.signal && log.signal >= -90 ? "text-emerald-400" : log.signal && log.signal >= -105 ? "text-amber-400" : "text-rose-400"}`}>
-                        {mode === "signal" ? (log.signal ? `${log.signal} dBm` : "—") : (log.download ? `${log.download.toFixed(1)} Mbps` : "—")}
-                      </Text>
-                    </View>
-                  </View>
-                ))}
-              </ScrollView>
-            </View>
-          </View>
+          <iframe
+            srcDoc={getMapHtml(logs, mode, visual)}
+            style={{ width: "100%", height: "100%", border: "none" }}
+            ref={webViewRef as any}
+          />
         ) : (
-          /* Native OpenStreetMap Render inside WebView */
-          WebView && (
-            <WebView
-              ref={webViewRef}
-              originWhitelist={["*"]}
-              source={{ html: getMapHtml(logs, mode, visual) }}
-              style={{ width: "100%", height: "100%", backgroundColor: "#020617" }}
-              javaScriptEnabled={true}
-              domStorageEnabled={true}
-            />
-          )
+          <WebView
+            ref={webViewRef}
+            originWhitelist={["*"]}
+            source={{ html: getMapHtml(logs, mode, visual) }}
+            style={{ width: "100%", height: "100%", backgroundColor: "#020617" }}
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+          />
         )}
 
+        {/* Floating Legend Overlay */}
+        <View className="absolute top-4 left-4 p-3 bg-slate-950/95 border border-slate-800 rounded-2xl shadow-xl z-40 w-44">
+          <Text className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Map Legend</Text>
+          <Text className="text-[9px] text-slate-500 font-bold mb-2 uppercase">
+            {mode === "signal" ? "Signal Strength" : "Download Speed"}
+          </Text>
+
+          {visual === "heatmap" ? (
+            /* Heatmap gradient range */
+            <View style={{ gap: 6 }}>
+              <View className="flex-row h-1.5 w-full rounded-full overflow-hidden">
+                <View className="flex-1 bg-rose-500" />
+                <View className="flex-1 bg-amber-500" />
+                <View className="flex-1 bg-yellow-500" />
+                <View className="flex-1 bg-emerald-500" />
+                <View className="flex-1 bg-sky-500" />
+              </View>
+              <View className="flex-row justify-between">
+                <Text className="text-[8px] text-rose-400 font-bold">{mode === "signal" ? "Weak" : "Slow"}</Text>
+                <Text className="text-[8px] text-sky-400 font-bold">{mode === "signal" ? "Strong" : "Fast"}</Text>
+              </View>
+            </View>
+          ) : (
+            /* Discrete thresholds for pins */
+            <View style={{ gap: 6 }}>
+              <View className="flex-row items-center gap-1.5">
+                <View className="w-2 h-2 rounded-full bg-emerald-500" />
+                <Text className="text-[9px] text-slate-300 font-semibold">
+                  {mode === "signal" ? "Excellent (≥-85)" : "Fast (≥40 Mbps)"}
+                </Text>
+              </View>
+              <View className="flex-row items-center gap-1.5">
+                <View className="w-2 h-2 rounded-full bg-amber-500" />
+                <Text className="text-[9px] text-slate-300 font-semibold">
+                  {mode === "signal" ? "Fair (-100 to -85)" : "Mid (15-40)"}
+                </Text>
+              </View>
+              <View className="flex-row items-center gap-1.5">
+                <View className="w-2 h-2 rounded-full bg-rose-500" />
+                <Text className="text-[9px] text-slate-300 font-semibold">
+                  {mode === "signal" ? "Poor (< -100)" : "Slow (<15 Mbps)"}
+                </Text>
+              </View>
+            </View>
+          )}
+        </View>
+
         {/* Floating Controls (Compact Circular FABs) */}
-        <View className="absolute bottom-6 right-4 gap-3 z-50">
-          {/* Toggle Mode FAB (Signal vs Speed) */}
-          <TouchableOpacity 
-            onPress={() => setMode(prev => prev === "signal" ? "speed" : "signal")}
+        <View className="absolute right-4 gap-3 z-50" style={{ bottom: showLogsList ? 296 : 74 }}>
+          {/* Recenter Map FAB */}
+          <TouchableOpacity
+            onPress={fetchLogsAndLocation}
             className="w-12 h-12 rounded-full bg-slate-950/90 border border-slate-800 items-center justify-center shadow-2xl active:bg-slate-900"
           >
-            {mode === "signal" ? (
-              <Radio size={20} color="#0ea5e9" />
-            ) : (
-              <Gauge size={20} color="#10b981" />
-            )}
+            <Navigation size={18} color="#0ea5e9" style={{ transform: [{ rotate: "45deg" }] }} />
+          </TouchableOpacity>
+
+          {/* Toggle Mode FAB (Signal vs Speed) */}
+          <TouchableOpacity
+            onPress={() => setMode((prev) => (prev === "signal" ? "speed" : "signal"))}
+            className="w-12 h-12 rounded-full bg-slate-950/90 border border-slate-800 items-center justify-center shadow-2xl active:bg-slate-900"
+          >
+            {mode === "signal" ? <Radio size={20} color="#0ea5e9" /> : <Gauge size={20} color="#10b981" />}
           </TouchableOpacity>
 
           {/* Toggle Visual FAB (Heatmap vs Pins) */}
-          <TouchableOpacity 
-            onPress={() => setVisual(prev => prev === "heatmap" ? "pins" : "heatmap")}
+          <TouchableOpacity
+            onPress={() => setVisual((prev) => (prev === "heatmap" ? "pins" : "heatmap"))}
             className="w-12 h-12 rounded-full bg-slate-950/90 border border-slate-800 items-center justify-center shadow-2xl active:bg-slate-900"
           >
-            {visual === "heatmap" ? (
-              <Layers size={20} color="#0ea5e9" />
-            ) : (
-              <MapPin size={20} color="#a78bfa" />
-            )}
+            {visual === "heatmap" ? <Layers size={20} color="#0ea5e9" /> : <MapPin size={20} color="#a78bfa" />}
           </TouchableOpacity>
+        </View>
+
+        {/* Collapsible Telemetry Logs Drawer */}
+        <View
+          className="absolute bottom-0 left-0 right-0 bg-slate-950/95 border-t border-slate-800 shadow-2xl z-40 rounded-t-3xl overflow-hidden"
+          style={{ height: showLogsList ? 280 : 54 }}
+        >
+          {/* Header click bar to toggle */}
+          <TouchableOpacity
+            onPress={() => setShowLogsList((prev) => !prev)}
+            activeOpacity={0.9}
+            className="flex-row items-center justify-between px-5 py-4 border-b border-slate-900"
+          >
+            <View className="flex-row items-center gap-2">
+              <Clock size={16} color="#94a3b8" />
+              <Text className="text-xs font-black text-slate-200 uppercase tracking-widest">
+                Telemetry Logs ({logs.length})
+              </Text>
+            </View>
+            {showLogsList ? <ChevronDown size={18} color="#94a3b8" /> : <ChevronUp size={18} color="#94a3b8" />}
+          </TouchableOpacity>
+
+          {/* List items (renders when expanded) */}
+          {showLogsList && (
+            <ScrollView className="px-4 py-2" contentContainerStyle={{ paddingBottom: 24, gap: 10 }}>
+              {logs.length > 0 ? (
+                logs.map((log) => (
+                  <View
+                    key={log.id}
+                    className="bg-slate-900 border border-slate-800/80 rounded-2xl p-3.5 flex-row items-center justify-between shadow-inner"
+                  >
+                    <View className="flex-1 pr-3">
+                      <View className="flex-row items-center gap-2">
+                        <Text className="text-slate-200 font-bold text-xs">{log.carrier || "WiFi Link"}</Text>
+                        <Text className="text-slate-500 text-[9px]">•</Text>
+                        <Text className="text-slate-400 text-[10px] font-semibold">{log.networkType || "Unknown"}</Text>
+                      </View>
+                      <Text className="text-slate-500 font-mono text-[9px] mt-1">
+                        GPS: {log.latitude?.toFixed(5)}, {log.longitude?.toFixed(5)}
+                      </Text>
+                    </View>
+
+                    <View className="items-end gap-0.5">
+                      <Text
+                        className={`font-black text-xs ${
+                          mode === "signal"
+                            ? log.signal && log.signal >= -85
+                              ? "text-emerald-400"
+                              : log.signal && log.signal >= -100
+                                ? "text-amber-400"
+                                : "text-rose-400"
+                            : log.download && log.download >= 40
+                              ? "text-emerald-400"
+                              : log.download && log.download >= 15
+                                ? "text-amber-400"
+                                : "text-rose-400"
+                        }`}
+                      >
+                        {mode === "signal"
+                          ? log.signal
+                            ? `${log.signal} dBm`
+                            : "—"
+                          : log.download
+                            ? `${log.download.toFixed(1)} Mbps`
+                            : "—"}
+                      </Text>
+                      <Text className="text-slate-500 text-[9px] font-semibold">
+                        {new Date(log.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </Text>
+                    </View>
+                  </View>
+                ))
+              ) : (
+                <View className="py-8 items-center justify-center">
+                  <Text className="text-slate-500 text-xs font-semibold">No geotagged signal logs recorded yet.</Text>
+                </View>
+              )}
+            </ScrollView>
+          )}
         </View>
       </View>
     </SafeAreaView>
