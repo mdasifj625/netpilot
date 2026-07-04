@@ -1,6 +1,7 @@
 package com.superhero.netpilot.speed
 
 import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import java.io.IOException
 import java.io.InputStream
 import java.util.concurrent.Executors
@@ -15,6 +16,9 @@ import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
 class NetworkSpeedModule : Module() {
+  private val context: Context?
+    get() = appContext.reactContext
+
   private val client = OkHttpClient.Builder()
     .connectTimeout(5, TimeUnit.SECONDS)
     .readTimeout(10, TimeUnit.SECONDS)
@@ -194,7 +198,7 @@ class NetworkSpeedModule : Module() {
     val uploadBuffer = ByteArray(16384)
 
     val requestBody = object : RequestBody() {
-      override fun contentType(): MediaType? = MediaType.parse("application/octet-stream")
+      override fun contentType(): MediaType? = "application/octet-stream".toMediaTypeOrNull()
       override fun contentLength(): Long = sizeInBytes.toLong()
 
       override fun writeTo(sink: okio.BufferedSink) {

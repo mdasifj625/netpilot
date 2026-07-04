@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { View, Text, TouchableOpacity, Platform, ScrollView, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -7,11 +7,8 @@ import {
   ArrowLeft, 
   MapPin, 
   Layers, 
-  Settings, 
   Radio, 
-  Gauge, 
-  Info,
-  Maximize2
+  Gauge
 } from "lucide-react-native";
 import * as Location from "expo-location";
 
@@ -19,21 +16,13 @@ import * as Location from "expo-location";
 import { db } from "../database/db";
 import { networkHistory, NetworkHistorySelect } from "../database/schema";
 
-// Platform-conditional require for react-native-maps to prevent Web crash
-let MapView: any = null;
-let Marker: any = null;
-let Heatmap: any = null;
-let PROVIDER_GOOGLE: any = null;
-
+// Platform-conditional require for react-native-webview to prevent Web crash
+let WebView: any = null;
 if (Platform.OS !== "web") {
   try {
-    const maps = require("react-native-maps");
-    MapView = maps.default;
-    Marker = maps.Marker;
-    Heatmap = maps.Heatmap;
-    PROVIDER_GOOGLE = maps.PROVIDER_GOOGLE;
+    WebView = require("react-native-webview").WebView;
   } catch (e) {
-    console.error("react-native-maps loading failed:", e);
+    console.error("react-native-webview loading failed:", e);
   }
 }
 
@@ -47,10 +36,18 @@ export default function CoverageMapScreen() {
   const [logs, setLogs] = useState<NetworkHistorySelect[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentCoords, setCurrentCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  
+  const webViewRef = useRef<any>(null);
 
   useEffect(() => {
     fetchLogsAndLocation();
   }, []);
+
+  useEffect(() => {
+    if (logs.length > 0) {
+      triggerMapUpdate(logs, mode, visual);
+    }
+  }, [logs, mode, visual, currentCoords]);
 
   const fetchLogsAndLocation = async () => {
     try {
@@ -60,10 +57,12 @@ export default function CoverageMapScreen() {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === "granted") {
         const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        setCurrentCoords({
+        const newCoords = {
           latitude: loc.coords.latitude,
           longitude: loc.coords.longitude
-        });
+        };
+        setCurrentCoords(newCoords);
+        centerMapOn(newCoords.latitude, newCoords.longitude);
       }
 
       // 2. Fetch logged database records that have valid coordinates
@@ -78,10 +77,12 @@ export default function CoverageMapScreen() {
 
       // If we don't have current location but have logs, center on the latest log
       if (!currentCoords && history.length > 0 && history[0].latitude && history[0].longitude) {
-        setCurrentCoords({
+        const firstLogCoords = {
           latitude: history[0].latitude,
           longitude: history[0].longitude
-        });
+        };
+        setCurrentCoords(firstLogCoords);
+        centerMapOn(firstLogCoords.latitude, firstLogCoords.longitude);
       }
     } catch (e) {
       console.error("Failed to compile map telemetry details:", e);
@@ -90,50 +91,261 @@ export default function CoverageMapScreen() {
     }
   };
 
-  // Fallback default coordinates (Delhi/Mumbai/NY centroid placeholder)
-  const defaultRegion = {
-    latitude: currentCoords?.latitude ?? 40.7128,
-    longitude: currentCoords?.longitude ?? -74.0060,
-    latitudeDelta: 0.015,
-    longitudeDelta: 0.015
-  };
-
-  // Generate heatmap points
-  const getHeatmapPoints = () => {
-    return logs.map((log) => {
-      let weight = 1;
-      if (mode === "signal" && log.signal) {
-        // Normalize RSRP: -140dBm to -40dBm scaled to 1 to 10 weight scale
-        weight = Math.max(1, Math.min(10, Math.round((log.signal + 140) / 10)));
-      } else if (mode === "speed" && log.download) {
-        // Normalize Speed: 0Mbps to 100Mbps scaled to 1 to 10 weight scale
-        weight = Math.max(1, Math.min(10, Math.round(log.download / 10)));
+  const centerMapOn = (lat: number, lng: number) => {
+    const js = `
+      if (window.centerOn) {
+        window.centerOn(${lat}, ${lng});
       }
-      return {
-        latitude: log.latitude!,
-        longitude: log.longitude!,
-        weight
-      };
-    });
-  };
-
-  // Helper to color code markers
-  const getMarkerColor = (log: NetworkHistorySelect) => {
-    if (mode === "signal") {
-      const val = log.signal ?? -110;
-      if (val >= -85) return "#10b981"; // Strong (Green)
-      if (val >= -100) return "#f59e0b"; // Medium (Amber)
-      return "#ef4444"; // Weak (Red)
+      true;
+    `;
+    if (Platform.OS === "web") {
+      try {
+        (webViewRef.current as any)?.contentWindow?.eval(js);
+      } catch (e) {
+        console.warn("Failed to center web map frame:", e);
+      }
     } else {
-      const val = log.download ?? 0;
-      if (val >= 40) return "#10b981"; // Fast (Green)
-      if (val >= 15) return "#f59e0b"; // Medium (Amber)
-      return "#ef4444"; // Slow (Red)
+      webViewRef.current?.injectJavaScript(js);
     }
   };
 
+  const triggerMapUpdate = (currentLogs: any[], currentMode: string, currentVisual: string) => {
+    const js = `
+      if (window.updateMapData) {
+        window.updateMapData(
+          ${JSON.stringify(currentLogs)},
+          "${currentMode}",
+          "${currentVisual}",
+          ${currentCoords?.latitude || "null"},
+          ${currentCoords?.longitude || "null"}
+        );
+      }
+      true;
+    `;
+    if (Platform.OS === "web") {
+      try {
+        (webViewRef.current as any)?.contentWindow?.eval(js);
+      } catch (e) {
+        console.warn("Failed to update web map frame:", e);
+      }
+    } else {
+      webViewRef.current?.injectJavaScript(js);
+    }
+  };
+
+  // Helper to generate self-contained Leaflet HTML
+  const getMapHtml = (initialLogs: any[], initialMode: string, initialVisual: string) => {
+    const centerLat = currentCoords?.latitude ?? 40.7128;
+    const centerLng = currentCoords?.longitude ?? -74.0060;
+    const hasCurrentLoc = currentCoords !== null;
+
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    html, body, #map {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      background-color: #020617;
+    }
+    /* Sleek custom popup styling */
+    .leaflet-popup-content-wrapper {
+      background: #0f172a !important;
+      color: #f1f5f9 !important;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    .leaflet-popup-tip {
+      background: #0f172a !important;
+      border: 1px solid #334155;
+    }
+    .leaflet-popup-content {
+      margin: 12px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .leaflet-popup-content b {
+      color: #38bdf8;
+    }
+    .leaflet-control-zoom {
+      border: 1px solid #334155 !important;
+    }
+    .leaflet-control-zoom-in, .leaflet-control-zoom-out {
+      background-color: #0f172a !important;
+      color: #f1f5f9 !important;
+      border-bottom: 1px solid #334155 !important;
+    }
+    .leaflet-control-attribution {
+      background: rgba(15, 23, 42, 0.8) !important;
+      color: #64748b !important;
+    }
+    .leaflet-control-attribution a {
+      color: #38bdf8 !important;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+  <script>
+    var map;
+    var heatLayer = null;
+    var markerLayer = null;
+    var initialCenter = [${centerLat}, ${centerLng}];
+
+    map = L.map('map', {
+      zoomControl: true,
+      attributionControl: true
+    }).setView(initialCenter, 15);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      maxZoom: 20
+    }).addTo(map);
+
+    var currentLocMarker = null;
+    var currentLocPulse = null;
+    function updateCurrentLocation(lat, lng) {
+      if (currentLocMarker) {
+        currentLocMarker.setLatLng([lat, lng]);
+      } else {
+        currentLocMarker = L.circleMarker([lat, lng], {
+          radius: 8,
+          fillColor: '#0ea5e9',
+          color: '#ffffff',
+          weight: 2,
+          fillOpacity: 1
+        }).addTo(map);
+      }
+      if (currentLocPulse) {
+        currentLocPulse.setLatLng([lat, lng]);
+      } else {
+        currentLocPulse = L.circle([lat, lng], {
+          radius: 30,
+          color: '#0ea5e9',
+          fillColor: '#0ea5e9',
+          fillOpacity: 0.15,
+          weight: 1
+        }).addTo(map);
+      }
+    }
+
+    if (${hasCurrentLoc}) {
+      updateCurrentLocation(${centerLat}, ${centerLng});
+    }
+
+    var logsData = ${JSON.stringify(initialLogs)};
+    var mapMode = "${initialMode}";
+    var visualType = "${initialVisual}";
+
+    function getMarkerColor(log, mode) {
+      if (mode === "signal") {
+        var val = log.signal || -110;
+        if (val >= -85) return "#10b981";
+        if (val >= -100) return "#f59e0b";
+        return "#ef4444";
+      } else {
+        var val = log.download || 0;
+        if (val >= 40) return "#10b981";
+        if (val >= 15) return "#f59e0b";
+        return "#ef4444";
+      }
+    }
+
+    function renderMap() {
+      if (heatLayer) {
+        map.removeLayer(heatLayer);
+        heatLayer = null;
+      }
+      if (markerLayer) {
+        map.removeLayer(markerLayer);
+        markerLayer = null;
+      }
+
+      if (visualType === "heatmap") {
+        var heatPoints = [];
+        logsData.forEach(function(log) {
+          if (log.latitude && log.longitude) {
+            var weight = 1;
+            if (mapMode === "signal" && log.signal) {
+              weight = Math.max(1, Math.min(10, Math.round((log.signal + 140) / 10)));
+            } else if (mapMode === "speed" && log.download) {
+              weight = Math.max(1, Math.min(10, Math.round(log.download / 10)));
+            }
+            heatPoints.push([log.latitude, log.longitude, weight / 10]);
+          }
+        });
+
+        heatLayer = L.heatLayer(heatPoints, {
+          radius: 25,
+          blur: 15,
+          max: 1.0,
+          gradient: {
+            0.2: '#ef4444',
+            0.4: '#f59e0b',
+            0.7: '#eab308',
+            0.9: '#22c55e',
+            1.0: '#0ea5e9'
+          }
+        }).addTo(map);
+
+      } else {
+        markerLayer = L.layerGroup().addTo(map);
+        logsData.forEach(function(log) {
+          if (log.latitude && log.longitude) {
+            var color = getMarkerColor(log, mapMode);
+            var title = (log.carrier || "WiFi") + " • " + (log.networkType || "Unknown");
+            var desc = mapMode === "signal" 
+              ? "Signal: " + (log.signal ? log.signal + " dBm" : "—") 
+              : "Download: " + (log.download ? log.download.toFixed(1) + " Mbps" : "—");
+            
+            var popupContent = "<div><b>" + title + "</b><br/>" + desc + "<br/><span style='font-size:10px; color:#64748b;'>" + new Date(log.timestamp).toLocaleTimeString() + "</span></div>";
+
+            L.circleMarker([log.latitude, log.longitude], {
+              radius: 6,
+              fillColor: color,
+              color: '#020617',
+              weight: 1,
+              fillOpacity: 0.9
+            })
+            .bindPopup(popupContent)
+            .addTo(markerLayer);
+          }
+        });
+      }
+    }
+
+    window.updateMapData = function(newLogs, newMode, newVisual, currentLat, currentLng) {
+      logsData = newLogs;
+      mapMode = newMode;
+      visualType = newVisual;
+      renderMap();
+      if (currentLat && currentLng) {
+        updateCurrentLocation(currentLat, currentLng);
+      }
+    };
+
+    window.centerOn = function(lat, lng) {
+      map.setView([lat, lng], 15);
+    };
+
+    renderMap();
+  </script>
+</body>
+</html>
+    `;
+  };
+
   return (
-    <SafeAreaView className="flex-1 bg-slate-950">
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#020617" }} className="flex-1 bg-slate-950">
       {/* Header bar */}
       <View className="flex-row items-center justify-between px-4 py-3 border-b border-slate-900 bg-slate-950/80">
         <TouchableOpacity onPress={() => router.back()} className="p-1">
@@ -145,84 +357,23 @@ export default function CoverageMapScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Control Overlay Panels */}
-      <View className="flex-row gap-2.5 px-4 py-2 bg-slate-900/60 border-b border-slate-900">
-        {/* Toggle Mode */}
-        <View className="flex-row bg-slate-950 border border-slate-800 rounded-lg p-0.5 flex-1">
-          <TouchableOpacity 
-            onPress={() => setMode("signal")}
-            className={`flex-1 flex-row items-center justify-center py-1.5 rounded gap-1.5 ${mode === "signal" ? "bg-sky-500" : "bg-transparent"}`}
-          >
-            <Radio size={14} color={mode === "signal" ? "#ffffff" : "#94a3b8"} />
-            <Text className={`font-bold text-3xs uppercase tracking-wider ${mode === "signal" ? "text-white" : "text-slate-400"}`}>Signal</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            onPress={() => setMode("speed")}
-            className={`flex-1 flex-row items-center justify-center py-1.5 rounded gap-1.5 ${mode === "speed" ? "bg-sky-500" : "bg-transparent"}`}
-          >
-            <Gauge size={14} color={mode === "speed" ? "#ffffff" : "#94a3b8"} />
-            <Text className={`font-bold text-3xs uppercase tracking-wider ${mode === "speed" ? "text-white" : "text-slate-400"}`}>Speed</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Toggle Visual */}
-        <View className="flex-row bg-slate-950 border border-slate-800 rounded-lg p-0.5 flex-1">
-          <TouchableOpacity 
-            onPress={() => setVisual("heatmap")}
-            className={`flex-1 flex-row items-center justify-center py-1.5 rounded gap-1.5 ${visual === "heatmap" ? "bg-sky-500" : "bg-transparent"}`}
-          >
-            <Layers size={14} color={visual === "heatmap" ? "#ffffff" : "#94a3b8"} />
-            <Text className={`font-bold text-3xs uppercase tracking-wider ${visual === "heatmap" ? "text-white" : "text-slate-400"}`}>Heatmap</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            onPress={() => setVisual("pins")}
-            className={`flex-1 flex-row items-center justify-center py-1.5 rounded gap-1.5 ${visual === "pins" ? "bg-sky-500" : "bg-transparent"}`}
-          >
-            <MapPin size={14} color={visual === "pins" ? "#ffffff" : "#94a3b8"} />
-            <Text className={`font-bold text-3xs uppercase tracking-wider ${visual === "pins" ? "text-white" : "text-slate-400"}`}>Pins</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
       {/* Main Map Viewer Canvas */}
-      <View className="flex-1 bg-slate-900 justify-center items-center">
+      <View style={{ flex: 1 }} className="flex-1 bg-slate-900 w-full h-full relative">
         {loading ? (
-          <ActivityIndicator size="large" color="#0ea5e9" />
-        ) : Platform.OS === "web" ? (
-          /* Web Simulator View */
-          <View className="w-full h-full flex-row">
-            {/* Left simulated map grid */}
-            <View className="flex-1 bg-slate-950 border-r border-slate-900 justify-center items-center p-6 relative overflow-hidden">
-              <View className="absolute inset-0 opacity-5 border border-slate-700/20" style={{ borderStyle: "dashed" }} />
-              {/* Fake grid lines */}
-              <View className="absolute w-[200%] h-[200%] opacity-15 flex-wrap flex-row gap-8 justify-center items-center">
-                {Array.from({ length: 48 }).map((_, i) => (
-                  <View key={i} className="w-16 h-16 border border-slate-800 rounded" />
-                ))}
-              </View>
-              
-              {/* Simulated Heatmap Blurs / Pins */}
-              {visual === "heatmap" ? (
-                <View className="relative w-72 h-72 items-center justify-center">
-                  <View className={`absolute w-44 h-44 rounded-full filter blur-3xl opacity-35 ${mode === "signal" ? "bg-emerald-500" : "bg-sky-500"}`} />
-                  <View className="absolute top-10 right-10 w-24 h-24 rounded-full filter blur-2xl opacity-20 bg-amber-500" />
-                  <View className="absolute bottom-10 left-10 w-20 h-20 rounded-full filter blur-2xl opacity-15 bg-rose-500" />
-                </View>
-              ) : (
-                <View className="relative w-72 h-72 items-center justify-center">
-                  <View className="absolute top-10 left-12 w-3.5 h-3.5 rounded-full bg-emerald-500 border border-slate-500 shadow" />
-                  <View className="absolute top-24 right-16 w-3.5 h-3.5 rounded-full bg-emerald-500 border border-slate-500 shadow" />
-                  <View className="absolute bottom-16 left-28 w-3.5 h-3.5 rounded-full bg-amber-500 border border-slate-500 shadow" />
-                  <View className="absolute bottom-10 right-12 w-3.5 h-3.5 rounded-full bg-rose-500 border border-slate-500 shadow" />
-                </View>
-              )}
+          <View className="absolute inset-0 items-center justify-center bg-slate-900 z-10">
+            <ActivityIndicator size="large" color="#0ea5e9" />
+          </View>
+        ) : null}
 
-              <View className="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-4 max-w-[280px] z-10 shadow-lg">
-                <Text className="text-slate-100 font-bold text-xs text-center">Web Map Simulation</Text>
-                <Text className="text-slate-400 text-3xs text-center mt-1 leading-relaxed">
-                  Interactive react-native-maps Google Map renders on physical Android devices. Below is active GPS telemetry extracted from SQLite.
-                </Text>
-              </View>
+        {Platform.OS === "web" ? (
+          /* Web Split View: Actual Map left, telemetry records list right */
+          <View className="w-full h-full flex-row">
+            <View className="flex-1 bg-slate-950 justify-center items-center relative overflow-hidden">
+              <iframe
+                srcDoc={getMapHtml(logs, mode, visual)}
+                style={{ width: "100%", height: "100%", border: "none" }}
+                ref={webViewRef as any}
+              />
             </View>
 
             {/* Right log details data list */}
@@ -247,64 +398,46 @@ export default function CoverageMapScreen() {
             </View>
           </View>
         ) : (
-          /* Native Google Maps Render */
-          MapView && (
-            <MapView
-              provider={PROVIDER_GOOGLE}
-              style={{ width: "100%", height: "100%" }}
-              initialRegion={defaultRegion}
-              customMapStyle={darkMapStyle}
-            >
-              {/* Heatmap Overlay Layer */}
-              {visual === "heatmap" && logs.length > 0 && Heatmap && (
-                <Heatmap
-                  points={getHeatmapPoints()}
-                  radius={Platform.OS === "ios" ? 40 : 25}
-                  opacity={0.8}
-                  gradient={{
-                    colors: mode === "signal" 
-                      ? ["#3b82f6", "#10b981", "#f59e0b", "#ef4444"] // Blue -> Green -> Orange -> Red
-                      : ["#818cf8", "#38bdf8", "#34d399", "#f59e0b"],
-                    startPoints: [0.1, 0.4, 0.7, 1.0],
-                    colorMapSize: 256
-                  }}
-                />
-              )}
-
-              {/* Pin Markers Layer */}
-              {visual === "pins" && logs.map((log) => (
-                <Marker
-                  key={log.id}
-                  coordinate={{ latitude: log.latitude!, longitude: log.longitude! }}
-                  pinColor={getMarkerColor(log)}
-                  title={`${log.carrier || "WiFi"} • ${log.networkType}`}
-                  description={
-                    mode === "signal"
-                      ? `Signal: ${log.signal ? `${log.signal} dBm` : "—"}`
-                      : `Download: ${log.download ? `${log.download.toFixed(1)} Mbps` : "—"}`
-                  }
-                />
-              ))}
-            </MapView>
+          /* Native OpenStreetMap Render inside WebView */
+          WebView && (
+            <WebView
+              ref={webViewRef}
+              originWhitelist={["*"]}
+              source={{ html: getMapHtml(logs, mode, visual) }}
+              style={{ width: "100%", height: "100%", backgroundColor: "#020617" }}
+              javaScriptEnabled={true}
+              domStorageEnabled={true}
+            />
           )
         )}
+
+        {/* Floating Controls (Compact Circular FABs) */}
+        <View className="absolute bottom-6 right-4 gap-3 z-50">
+          {/* Toggle Mode FAB (Signal vs Speed) */}
+          <TouchableOpacity 
+            onPress={() => setMode(prev => prev === "signal" ? "speed" : "signal")}
+            className="w-12 h-12 rounded-full bg-slate-950/90 border border-slate-800 items-center justify-center shadow-2xl active:bg-slate-900"
+          >
+            {mode === "signal" ? (
+              <Radio size={20} color="#0ea5e9" />
+            ) : (
+              <Gauge size={20} color="#10b981" />
+            )}
+          </TouchableOpacity>
+
+          {/* Toggle Visual FAB (Heatmap vs Pins) */}
+          <TouchableOpacity 
+            onPress={() => setVisual(prev => prev === "heatmap" ? "pins" : "heatmap")}
+            className="w-12 h-12 rounded-full bg-slate-950/90 border border-slate-800 items-center justify-center shadow-2xl active:bg-slate-900"
+          >
+            {visual === "heatmap" ? (
+              <Layers size={20} color="#0ea5e9" />
+            ) : (
+              <MapPin size={20} color="#a78bfa" />
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
     </SafeAreaView>
   );
 }
-
-// Sleek dark-mode theme map style configuration for Google Maps SDK
-const darkMapStyle = [
-  { "elementType": "geometry", "stylers": [{ "color": "#0f172a" }] },
-  { "elementType": "labels.text.fill", "stylers": [{ "color": "#64748b" }] },
-  { "elementType": "labels.text.stroke", "stylers": [{ "color": "#0f172a" }] },
-  { "featureType": "administrative", "elementType": "geometry", "stylers": [{ "color": "#1e293b" }] },
-  { "featureType": "administrative.country", "elementType": "labels.text.fill", "stylers": [{ "color": "#94a3b8" }] },
-  { "featureType": "landscape", "elementType": "geometry", "stylers": [{ "color": "#0f172a" }] },
-  { "featureType": "poi", "stylers": [{ "visibility": "off" }] },
-  { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#1e293b" }] },
-  { "featureType": "road", "elementType": "geometry.stroke", "stylers": [{ "color": "#0f172a" }] },
-  { "featureType": "road", "elementType": "labels.text.fill", "stylers": [{ "color": "#475569" }] },
-  { "featureType": "transit", "stylers": [{ "visibility": "off" }] },
-  { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#020617" }] }
-];

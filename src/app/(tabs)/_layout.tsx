@@ -13,8 +13,8 @@ export default function TabLayout() {
           backgroundColor: "#0f172a", // Slate 900
           borderTopWidth: 1,
           borderTopColor: "#1e293b", // Slate 800
-          height: Platform.OS === "ios" ? 88 : 68,
-          paddingBottom: Platform.OS === "ios" ? 28 : 10,
+          height: Platform.OS === "ios" ? 94 : 80,
+          paddingBottom: Platform.OS === "ios" ? 32 : 18,
           paddingTop: 8,
         },
         tabBarLabelStyle: {

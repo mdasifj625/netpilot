@@ -1,15 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, ScrollView, TouchableOpacity, Alert } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, Alert, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
 import { desc, isNotNull } from "drizzle-orm";
 import { 
-  Gauge, 
   ArrowDown, 
   ArrowUp, 
-  Activity, 
   Clock, 
-  History, 
   Zap 
 } from "lucide-react-native";
 
@@ -28,52 +25,127 @@ import { useAppStore } from "../../store/useAppStore";
 import Svg, { Path, Circle, Line, Text as SvgText, Defs, LinearGradient, Stop } from "react-native-svg";
 
 const Speedometer = ({ speed }: { speed: number }) => {
-  const maxSpeed = 150;
-  const angle = -90 + Math.min(1, speed / maxSpeed) * 180;
-  
+  const maxSpeed = 160;
+  const angle = -135 + Math.min(1, speed / maxSpeed) * 270;
+  const ticks = [0, 20, 40, 60, 80, 100, 120, 140, 160];
+  const labelTicks = [0, 40, 80, 120, 160];
+
+  const getTickCoords = (value: number, radius: number) => {
+    const tickAngle = -135 + (value / maxSpeed) * 270;
+    const angleRad = (tickAngle - 90) * Math.PI / 180;
+    return {
+      x: 120 + radius * Math.cos(angleRad),
+      y: 120 + radius * Math.sin(angleRad)
+    };
+  };
+
   return (
     <View className="items-center justify-center relative my-4">
-      <Svg width="200" height="120" viewBox="0 0 200 120">
+      <Svg width="240" height="240" viewBox="0 0 240 240">
         <Defs>
-          <LinearGradient id="speedGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-            <Stop offset="0%" stopColor="#38bdf8" />
+          <LinearGradient id="speedGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+            <Stop offset="0%" stopColor="#0ea5e9" />
             <Stop offset="50%" stopColor="#818cf8" />
             <Stop offset="100%" stopColor="#ec4899" />
           </LinearGradient>
+          <LinearGradient id="trackGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <Stop offset="0%" stopColor="#1e293b" stopOpacity={0.8} />
+            <Stop offset="100%" stopColor="#0f172a" stopOpacity={0.8} />
+          </LinearGradient>
         </Defs>
-        <Path
-          d="M 20 110 A 80 80 0 0 1 180 110"
-          fill="none"
-          stroke="#1e293b"
+
+        {/* Outer Background Track Arc */}
+        <Circle
+          cx="120"
+          cy="120"
+          r="95"
+          stroke="url(#trackGrad)"
           strokeWidth="12"
+          fill="none"
+          strokeDasharray="447.67 149.22"
+          transform="rotate(135, 120, 120)"
           strokeLinecap="round"
         />
-        <Path
-          d="M 20 110 A 80 80 0 0 1 180 110"
-          fill="none"
+
+        {/* Active Speed Arc */}
+        <Circle
+          cx="120"
+          cy="120"
+          r="95"
           stroke="url(#speedGrad)"
           strokeWidth="12"
+          fill="none"
+          strokeDasharray="447.67 149.22"
+          strokeDashoffset={447.67 - Math.min(1, speed / maxSpeed) * 447.67}
+          transform="rotate(135, 120, 120)"
           strokeLinecap="round"
-          strokeDasharray="251"
-          strokeDashoffset={251 - Math.min(1, speed / maxSpeed) * 251}
         />
-        <Circle cx="100" cy="110" r="10" fill="#0f172a" stroke="#818cf8" strokeWidth="3" />
-        <Line
-          x1="100"
-          y1="110"
-          x2="100"
-          y2="40"
-          stroke="#0ea5e9"
-          strokeWidth="4"
-          strokeLinecap="round"
-          transform={`rotate(${angle}, 100, 110)`}
+
+        {/* Inner subtle rim */}
+        <Circle
+          cx="120"
+          cy="120"
+          r="78"
+          stroke="#1e293b"
+          strokeWidth="1"
+          fill="none"
+          strokeDasharray="367.57 122.52"
+          transform="rotate(135, 120, 120)"
         />
-        <SvgText x="20" y="125" fill="#64748b" fontSize="8" fontWeight="bold" textAnchor="middle">0</SvgText>
-        <SvgText x="100" y="20" fill="#64748b" fontSize="8" fontWeight="bold" textAnchor="middle">75</SvgText>
-        <SvgText x="180" y="125" fill="#64748b" fontSize="8" fontWeight="bold" textAnchor="middle">150+</SvgText>
+
+        {/* Ticks */}
+        {ticks.map((val) => {
+          const startCoords = getTickCoords(val, 84);
+          const endCoords = getTickCoords(val, 91);
+          const isActive = speed >= val && speed > 0;
+          return (
+            <Line
+              key={val}
+              x1={startCoords.x.toString()}
+              y1={startCoords.y.toString()}
+              x2={endCoords.x.toString()}
+              y2={endCoords.y.toString()}
+              stroke={isActive ? "#38bdf8" : "#334155"}
+              strokeWidth={isActive ? "2.5" : "1.5"}
+            />
+          );
+        })}
+
+        {/* Label numbers inside the gauge */}
+        {labelTicks.map((val) => {
+          const coords = getTickCoords(val, 64);
+          const isActive = speed >= val && speed > 0;
+          return (
+            <SvgText
+              key={val}
+              x={coords.x.toString()}
+              y={(coords.y + 3.5).toString()} // small offset to vertically center text
+              fill={isActive ? "#f8fafc" : "#475569"}
+              fontSize="10"
+              fontWeight="bold"
+              textAnchor="middle"
+            >
+              {val}
+            </SvgText>
+          );
+        })}
+
+        {/* Needle pointer */}
+        <Path
+          d="M 116 120 L 120 32 L 124 120 Z"
+          fill="#38bdf8"
+          transform={`rotate(${angle}, 120, 120)`}
+          stroke="#0284c7"
+          strokeWidth="0.5"
+        />
+
+        {/* Center Hub */}
+        <Circle cx="120" cy="120" r="14" fill="#0f172a" stroke="#38bdf8" strokeWidth="2.5" />
+        <Circle cx="120" cy="120" r="4" fill="#38bdf8" />
       </Svg>
-      
-      <View className="absolute bottom-0 items-center">
+
+      {/* Speedometer text readout */}
+      <View className="absolute bottom-8 items-center">
         <Text className="text-3xl font-black text-slate-50">{speed.toFixed(1)}</Text>
         <Text className="text-slate-500 font-bold text-[9px] uppercase tracking-widest mt-0.5">Mbps</Text>
       </View>
@@ -172,7 +244,7 @@ export default function SpeedScreen() {
     : "https://speed.cloudflare.com/__up";
 
   useEffect(() => {
-    // Register native event listeners
+    // Register native or fallback JS event listeners
     const subPing = addPingFinishedListener((event) => {
       setPing(event.pingMs);
       setJitter(event.jitterMs);
@@ -214,9 +286,20 @@ export default function SpeedScreen() {
 
   const saveTestResult = async (finalDownload: number, finalUpload: number) => {
     try {
-      const cell = getCellularDetails();
-      const cellCarrier = cell?.carrier ?? "WiFi Link";
-      const connType = cell?.networkType ?? "WiFi";
+      let cellCarrier = "WiFi Link";
+      let connType = "WiFi";
+
+      // Safely access cellular details on native platforms
+      if (Platform.OS !== "web") {
+        try {
+          const cell = getCellularDetails();
+          cellCarrier = cell?.carrier ?? "WiFi Link";
+          connType = cell?.networkType ?? "WiFi";
+        } catch (err) {
+          // ignore
+        }
+      }
+
       const finalPing = ping;
       // Save speed test to local database
       await db.insert(networkHistory).values({
@@ -263,22 +346,21 @@ export default function SpeedScreen() {
 
   // Determine pointer speed values for UI gauge
   const currentSpeed = status === "download" ? downloadSpeed : status === "upload" ? uploadSpeed : status === "finished" ? downloadSpeed : 0;
-  const speedLabel = status === "upload" ? "Upload" : "Download";
 
   return (
-    <SafeAreaView edges={["bottom"]} className="flex-1 bg-slate-950">
-      <ScrollView className="flex-1 px-4 py-2">
+    <SafeAreaView edges={["bottom"]} style={{ flex: 1, backgroundColor: "#020617" }} className="flex-1 bg-slate-950">
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 100 }} className="flex-1 px-4 py-2">
         {/* Title */}
         <View className="mb-6 mt-4">
           <Text className="text-2xl font-bold text-slate-50">Speed Test</Text>
-          <Text className="text-slate-400 text-xs mt-0.5">Multi-threaded OkHttp latency and throughput audit</Text>
+          <Text className="text-slate-400 text-xs mt-0.5">Multi-threaded latency and throughput audit</Text>
         </View>
 
         {/* Gauge Card */}
-        <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 mb-5 items-center py-10 shadow-lg relative overflow-hidden">
+        <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 mb-5 items-center py-8 shadow-lg relative overflow-hidden">
           {/* Animated Glow during active testing */}
           {(status === "download" || status === "upload") && (
-            <View className={`absolute top-10 w-44 h-44 rounded-full filter blur-3xl opacity-15 animate-pulse ${status === "download" ? "bg-sky-500" : "bg-indigo-500"}`} />
+            <View className={`absolute top-10 w-44 h-44 rounded-full filter blur-3xl opacity-15 ${status === "download" ? "bg-sky-500" : "bg-indigo-500"}`} />
           )}
 
           {/* Core Speedometer Gauge */}
@@ -302,7 +384,7 @@ export default function SpeedScreen() {
           {/* Action Trigger Button */}
           <TouchableOpacity 
             onPress={handleStartTest}
-            className={`mt-8 px-12 py-3.5 rounded-full shadow-lg items-center justify-center ${
+            className={`mt-6 px-12 py-3.5 rounded-full shadow-lg items-center justify-center ${
               status !== "idle" && status !== "finished"
                 ? "bg-slate-800 border border-slate-700 active:bg-slate-700"
                 : "bg-sky-500 active:bg-sky-600"

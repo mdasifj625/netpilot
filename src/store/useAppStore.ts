@@ -4,23 +4,29 @@ import { Platform } from "react-native";
 
 // Web Mock for MMKV utilizing standard browser localStorage
 class WebMMKV {
+  private memoryStore: { [key: string]: string } = {};
+
   set(key: string, value: string | number | boolean | Uint8Array) {
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && window.localStorage) {
       window.localStorage.setItem(key, String(value));
+    } else {
+      this.memoryStore[key] = String(value);
     }
   }
 
   getString(key: string): string | undefined {
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && window.localStorage) {
       const val = window.localStorage.getItem(key);
       return val !== null ? val : undefined;
     }
-    return undefined;
+    return this.memoryStore[key];
   }
 
   delete(key: string) {
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && window.localStorage) {
       window.localStorage.removeItem(key);
+    } else {
+      delete this.memoryStore[key];
     }
   }
 }

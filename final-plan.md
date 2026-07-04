@@ -20,7 +20,7 @@ Based on our design alignment, NetPilot will use the following tech stack and de
 *   **LAN Device Discovery:** Basic Ping Sweep & Host Discovery implemented in a native Kotlin module using multi-threaded ICMP pings and NetBIOS/mDNS resolution, coupled with an offline MAC vendor database lookup.
 *   **Ping / Latency Targets:** Public DNS servers (e.g., Cloudflare `1.1.1.1` and Google `8.8.8.8`) for real-time ping and jitter calculation via native ICMP/UDP sockets.
 *   **WiFi Analyzer Visualization:** Dual Mode (Overlapping parabolic channel curves for 2.4/5/6 GHz alongside a ranked quality rating list from 1–10).
-*   **Mapping Provider:** Google Maps SDK via `react-native-maps` for high-performance vector rendering, heatmaps, and coordinate tracing.
+*   **Mapping Provider:** Leaflet + OpenStreetMap via `react-native-webview` (or native iframe on web) utilizing CartoDB Dark Matter tiles for a 100% free, open-source, keyless, and sleek visual layout.
 *   **Smart Rules Engine:** Visual JSON Builder. Triggers and conditions are defined in a GUI, stored as JSON in SQLite, and evaluated on both the JS thread (foreground) and within the Kotlin Foreground Service (background).
 
 ---
@@ -39,7 +39,7 @@ Based on our design alignment, NetPilot will use the following tech stack and de
 | **Connected Devices Scanner** (LAN IP/MAC scan) | No | **Yes (LanScannerModule)** | Reading `/proc/net/arp` is blocked since Android 10. Requires native multi-threaded ping sweeps / MDNS queries. |
 | **Background Signal Tracking** | No | **Yes (BackgroundService)** | Requires a native Android **Foreground Service** with a persistent status notification to avoid OS termination. |
 | **Alert Rules Engine** | GUI & evaluation in TS (foreground) | **Yes (for background)** | Rules must be parsed and evaluated inside the native Foreground Service to run when the app is closed. |
-| **Coverage Map (Heatmap)** | Yes (`react-native-maps` + Tile Overlays) | No | Background location logging requires `ACCESS_BACKGROUND_LOCATION` (highly restricted on Play Store). |
+| **Coverage Map (Heatmap)** | Yes (Leaflet Heatmap in WebView) | No | Background location logging requires `ACCESS_BACKGROUND_LOCATION` (highly restricted on Play Store). |
 
 ---
 
@@ -171,8 +171,8 @@ This timeline gets NetPilot fully built, tested, and ready for deployment in 8 w
 ### Phase 5: Coverage Heatmaps & Smart Rules (Days 40–48)
 - **Goal:** Spatial visualization of network performance and automated rules.
 - **Tasks:**
-  1. Integrate `react-native-maps` and build a Coverage Map showing colored signal/speed pins (Red = poor, Green = strong).
-  2. Implement Heatmap overlays using coordinates recorded by the background service.
+  1. Integrate `react-native-webview` Leaflet Map showing colored signal/speed pins (Red = poor, Green = strong).
+  2. Implement Heatmap overlays using coordinates recorded by the background service inside Leaflet.
   3. Build the Smart Rules Engine Visual JSON Builder UI.
   4. Integrate JSON rule evaluation logic into both the TS layer and the Kotlin Foreground Service.
 

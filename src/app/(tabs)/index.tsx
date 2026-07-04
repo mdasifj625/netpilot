@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, ScrollView, TouchableOpacity, Alert, Platform } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, Alert, Platform, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import * as Location from "expo-location";
@@ -21,7 +21,7 @@ import {
 
 // Import custom native modules
 import { getCellularDetails, getNetworkDetails, CellularDiagnosticsData, NetworkDetailsData } from "../../../modules/cellular-diagnostics";
-import { launchRadioInfo, launchMobileNetworkSettings, launchSamsungBandSelection } from "../../../modules/network-intent";
+import { launchRadioInfo, launchMobileNetworkSettings } from "../../../modules/network-intent";
 import { useAppStore } from "../../store/useAppStore";
 
 export default function DashboardScreen() {
@@ -36,29 +36,39 @@ export default function DashboardScreen() {
   // Check and request location permission (required for telephony scan results)
   const checkPermission = async () => {
     try {
-      const { status } = await Location.getForegroundPermissionsAsync();
-      if (status === "granted") {
-        setPermissionGranted(true);
-      } else {
-        setPermissionGranted(false);
-      }
+      const response = await Location.getForegroundPermissionsAsync();
+      const isFine = response.status === "granted" && response.android?.accuracy === "fine";
+      setPermissionGranted(isFine);
+      return isFine;
     } catch (e) {
       setPermissionGranted(false);
+      return false;
     }
   };
 
   const requestPermission = async () => {
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === "granted") {
-        setPermissionGranted(true);
+      const response = await Location.requestForegroundPermissionsAsync();
+      const isFine = response.status === "granted" && response.android?.accuracy === "fine";
+      setPermissionGranted(isFine);
+      if (isFine) {
         updateTelemetry();
       } else {
-        setPermissionGranted(false);
-        Alert.alert(
-          "Permission Required",
-          "Location permission is required to read network hardware states and signal strengths."
-        );
+        if (response.status === "granted") {
+          Alert.alert(
+            "Precise Location Required",
+            "You enabled 'Approximate Location'. To read active bands and cellular towers, NetPilot needs 'Precise Location'.\n\nPlease enable it in Settings.",
+            [
+              { text: "Cancel", style: "cancel" },
+              { text: "Open Settings", onPress: () => Linking.openSettings() }
+            ]
+          );
+        } else {
+          Alert.alert(
+            "Permission Required",
+            "Location permission is required to read network hardware states and signal strengths."
+          );
+        }
       }
     } catch (e) {
       console.error(e);
@@ -84,7 +94,17 @@ export default function DashboardScreen() {
   // Run telemetry update loop every 2 seconds when screen is focused
   useFocusEffect(
     React.useCallback(() => {
-      checkPermission();
+      const init = async () => {
+        const isFine = await checkPermission();
+        if (!isFine) {
+          const response = await Location.getForegroundPermissionsAsync();
+          if (response.status === "undetermined" || (response.status === "denied" && response.canAskAgain)) {
+            await requestPermission();
+          }
+        }
+      };
+
+      init();
       updateTelemetry();
 
       const interval = setInterval(() => {
@@ -133,8 +153,8 @@ export default function DashboardScreen() {
   const signalQuality = getSignalQuality(cellDetails?.rsrp ?? null);
 
   return (
-    <SafeAreaView edges={["bottom"]} className="flex-1 bg-slate-950">
-      <ScrollView className="flex-1 px-4 py-2">
+    <SafeAreaView edges={["bottom"]} style={{ flex: 1, backgroundColor: "#020617" }} className="flex-1 bg-slate-950">
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 }} className="flex-1 px-4 py-2">
         {/* Header */}
         <View className="flex-row justify-between items-center mb-5 mt-4">
           <View>
@@ -295,7 +315,7 @@ export default function DashboardScreen() {
         {/* Network Force / Settings Toggles */}
         <Text className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3 px-1">Native Control Panels</Text>
         
-        <View className="flex-row gap-3 mb-6">
+        <View className="flex-row gap-4 mb-6">
           <TouchableOpacity 
             onPress={() => {
               const success = launchMobileNetworkSettings();
@@ -312,8 +332,8 @@ export default function DashboardScreen() {
               const success = launchRadioInfo();
               if (!success) {
                 Alert.alert(
-                  "RadioInfo Menu Blocked",
-                  "Direct access to hidden RadioInfo menu (*#*#4636#*#*) is restricted on this device.\n\nManual settings path:\nSettings → Mobile Network → SIMs → Preferred Network Type",
+                  "Force Band Blocked",
+                  "Direct access to hidden network configuration is restricted on this device.\n\nManual settings path:\nSettings → Mobile Network → SIMs → Preferred Network Type",
                   [
                     { text: "Cancel", style: "cancel" },
                     { text: "Open Mobile Settings", onPress: () => launchMobileNetworkSettings() }
@@ -325,26 +345,6 @@ export default function DashboardScreen() {
           >
             <Gauge size={20} color="#818cf8" />
             <Text className="text-xs font-bold text-slate-300 mt-2 text-center">Force Band</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            onPress={() => {
-              const success = launchSamsungBandSelection();
-              if (!success) {
-                Alert.alert(
-                  "Samsung Menu Blocked",
-                  "Samsung hidden settings activity is restricted or not supported on this model.\n\nManual settings path:\nSettings → Mobile Network → SIMs → Preferred Network Type",
-                  [
-                    { text: "Cancel", style: "cancel" },
-                    { text: "Open Mobile Settings", onPress: () => launchMobileNetworkSettings() }
-                  ]
-                );
-              }
-            }}
-            className="flex-1 bg-slate-900 border border-slate-800 active:bg-slate-800 rounded-2xl p-4 items-center justify-center shadow-md"
-          >
-            <Lock size={20} color="#38bdf8" />
-            <Text className="text-xs font-bold text-slate-300 mt-2 text-center">Samsung lock</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

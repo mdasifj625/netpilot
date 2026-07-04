@@ -8,6 +8,8 @@ import android.telephony.CellInfoNr
 import android.telephony.CellInfoWcdma
 import android.telephony.CellInfoGsm
 import android.telephony.TelephonyManager
+import android.telephony.CellSignalStrengthLte
+import android.telephony.CellSignalStrengthNr
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.LinkProperties
@@ -63,7 +65,27 @@ class CellularDiagnosticsModule : Module() {
     }
   }
 
+  private fun requestModemScan() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      try {
+        telephonyManager.requestCellInfoUpdate(context.mainExecutor, object : TelephonyManager.CellInfoCallback() {
+          override fun onCellInfo(cellInfo: MutableList<CellInfo>) {
+            // Cache successfully refreshed
+          }
+          override fun onError(errorCode: Int, detail: Throwable?) {
+            // Ignore
+          }
+        })
+      } catch (e: SecurityException) {
+        // Permission not granted
+      } catch (e: Exception) {
+        // Ignore
+      }
+    }
+  }
+
   private fun getRSRP(): Int? {
+    requestModemScan()
     try {
       val cellInfos = telephonyManager.allCellInfo ?: return null
       for (cellInfo in cellInfos) {
@@ -88,6 +110,7 @@ class CellularDiagnosticsModule : Module() {
   }
 
   private fun getDetailsMap(): Map<String, Any?> {
+    requestModemScan()
     val result = mutableMapOf<String, Any?>(
       "carrier" to telephonyManager.networkOperatorName,
       "networkType" to getNetworkTypeName(),
@@ -116,33 +139,123 @@ class CellularDiagnosticsModule : Module() {
                 
                 result["rsrp"] = signal.rsrp
                 result["rsrq"] = signal.rsrq
-                result["rssi"] = signal.rssi
+                
+                val rawRssi = signal.rssi
+                result["rssi"] = if (rawRssi == 2147483647 || rawRssi == null || rawRssi == 0) {
+                  val rsrp = signal.rsrp
+                  if (rsrp != 2147483647 && rsrp != null && rsrp < 0) {
+                    rsrp + 17
+                  } else {
+                    null
+                  }
+                } else {
+                  rawRssi
+                }
+                
                 result["sinr"] = signal.rssnr
                 result["pci"] = identity.pci
                 result["tac"] = identity.tac
                 result["cid"] = identity.ci
                 
                 val earfcn = identity.earfcn
-                result["band"] = getLteBand(earfcn)
+                var bandLte: Int? = null
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                  val bands = identity.bands
+                  if (bands != null && bands.isNotEmpty()) {
+                    bandLte = bands[0]
+                  }
+                }
+                if (bandLte == null || bandLte == 2147483647) {
+                  bandLte = getLteBand(earfcn)
+                }
+                result["band"] = bandLte
                 result["cgi"] = "${identity.mccString}-${identity.mncString}-${identity.tac}-${identity.ci}"
                 break
               }
               is CellInfoNr -> {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                  val identity = cellInfo.cellIdentity
+                  val identity = cellInfo.cellIdentity as android.telephony.CellIdentityNr
                   val signal = cellInfo.cellSignalStrength as android.telephony.CellSignalStrengthNr
-                  
-                  result["rsrp"] = signal.dbm
+                  val rsrpNr = signal.dbm
+                  result["rsrp"] = rsrpNr
                   result["rsrq"] = signal.ssRsrq
                   result["sinr"] = signal.ssSinr
+                  
+                  result["rssi"] = if (rsrpNr != 2147483647 && rsrpNr != null && rsrpNr < 0) {
+                    rsrpNr + 20
+                  } else {
+                    null
+                  }
                   result["pci"] = identity.pci
                   result["tac"] = identity.tac
                   result["cid"] = identity.nci
                   
                   val nrarfcn = identity.nrarfcn
-                  result["band"] = getNrBand(nrarfcn)
+                  var bandNr: Int? = null
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    val bands = identity.bands
+                    if (bands != null && bands.isNotEmpty()) {
+                      bandNr = bands[0]
+                    }
+                  }
+                  if (bandNr == null || bandNr == 2147483647) {
+                    bandNr = getNrBand(nrarfcn)
+                  }
+                  result["band"] = bandNr
                   result["cgi"] = "${identity.mccString}-${identity.mncString}-${identity.tac}-${identity.nci}"
                   break
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Fallback: Real-time query of TelephonyManager's active signal strength (useful for Samsung/Xiaomi and cached info)
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        val signalStrength = telephonyManager.signalStrength
+        if (signalStrength != null) {
+          val strengths = signalStrength.cellSignalStrengths
+          for (strength in strengths) {
+            when (strength) {
+              is CellSignalStrengthLte -> {
+                val rssnr = strength.rssnr
+                if (rssnr != 2147483647 && (result["sinr"] == null || result["sinr"] == 2147483647)) {
+                  result["sinr"] = rssnr
+                }
+                if (result["rsrq"] == null || result["rsrq"] == 2147483647) {
+                  val rsrq = strength.rsrq
+                  if (rsrq != 2147483647) result["rsrq"] = rsrq
+                }
+                if (result["rsrp"] == null || result["rsrp"] == 2147483647) {
+                  val rsrp = strength.rsrp
+                  if (rsrp != 2147483647) result["rsrp"] = rsrp
+                }
+                val rssi = strength.rssi
+                if (rssi != 2147483647 && rssi != 0 && (result["rssi"] == null || result["rssi"] == 2147483647)) {
+                  result["rssi"] = rssi
+                }
+              }
+              is CellSignalStrengthNr -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                  val ssSinr = strength.ssSinr
+                  val csiSinr = strength.csiSinr
+                  val validSinr = if (ssSinr != 2147483647) ssSinr else if (csiSinr != 2147483647) csiSinr else 2147483647
+                  if (validSinr != 2147483647 && (result["sinr"] == null || result["sinr"] == 2147483647)) {
+                    result["sinr"] = validSinr
+                  }
+                  if (result["rsrq"] == null || result["rsrq"] == 2147483647) {
+                    val ssRsrq = strength.ssRsrq
+                    val csiRsrq = strength.csiRsrq
+                    val validRsrq = if (ssRsrq != 2147483647) ssRsrq else if (csiRsrq != 2147483647) csiRsrq else 2147483647
+                    if (validRsrq != 2147483647) result["rsrq"] = validRsrq
+                  }
+                  if (result["rsrp"] == null || result["rsrp"] == 2147483647) {
+                    val ssRsrp = strength.ssRsrp
+                    val csiRsrp = strength.csiRsrp
+                    val validRsrp = if (ssRsrp != 2147483647) ssRsrp else if (csiRsrp != 2147483647) csiRsrp else 2147483647
+                    if (validRsrp != 2147483647) result["rsrp"] = validRsrp
+                  }
                 }
               }
             }

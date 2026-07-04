@@ -1,21 +1,14 @@
 {
   "expo": {
+    "scheme": "netpilot",
     "name": "netpilot",
     "slug": "netpilot",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "ios": {
-      "supportsTablet": true
-    },
     "android": {
       "package": "com.superhero.netpilot",
-      "config": {
-        "googleMaps": {
-          "apiKey": "YOUR_GOOGLE_MAPS_API_KEY_HERE"
-        }
-      },
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -36,7 +29,12 @@
         "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.WAKE_LOCK"
-      ]
+      ],
+      "newArchEnabled": true
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.superhero.netpilot"
     },
     "web": {
       "favicon": "./assets/favicon.png"

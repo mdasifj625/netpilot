@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, ScrollView, TouchableOpacity, Dimensions, Platform } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, Dimensions, Platform, Alert, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
+import * as Location from "expo-location";
 import { 
   Radio, 
   Activity, 
@@ -32,6 +33,48 @@ import { launchRadioInfo } from "../../../modules/network-intent";
 export default function CellularScreen() {
   const [details, setDetails] = useState<CellularDiagnosticsData | null>(null);
   const [chartData, setChartData] = useState<{ index: number; rsrp: number }[]>([]);
+  const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null);
+
+  const checkPermission = async () => {
+    try {
+      const response = await Location.getForegroundPermissionsAsync();
+      const isFine = response.status === "granted" && response.android?.accuracy === "fine";
+      setPermissionGranted(isFine);
+      return isFine;
+    } catch (e) {
+      setPermissionGranted(false);
+      return false;
+    }
+  };
+
+  const requestPermission = async () => {
+    try {
+      const response = await Location.requestForegroundPermissionsAsync();
+      const isFine = response.status === "granted" && response.android?.accuracy === "fine";
+      setPermissionGranted(isFine);
+      if (isFine) {
+        updateTelemetry();
+      } else {
+        if (response.status === "granted") {
+          Alert.alert(
+            "Precise Location Required",
+            "You enabled 'Approximate Location'. To read active bands and cellular towers, NetPilot needs 'Precise Location'.\n\nPlease enable it in Settings.",
+            [
+              { text: "Cancel", style: "cancel" },
+              { text: "Open Settings", onPress: () => Linking.openSettings() }
+            ]
+          );
+        } else {
+          Alert.alert(
+            "Permission Required",
+            "Location permission is required to read network hardware states and signal strengths."
+          );
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const updateTelemetry = () => {
     try {
@@ -59,6 +102,17 @@ export default function CellularScreen() {
 
   useFocusEffect(
     React.useCallback(() => {
+      const init = async () => {
+        const isFine = await checkPermission();
+        if (!isFine) {
+          const response = await Location.getForegroundPermissionsAsync();
+          if (response.status === "undetermined" || (response.status === "denied" && response.canAskAgain)) {
+            await requestPermission();
+          }
+        }
+      };
+
+      init();
       updateTelemetry();
 
       const interval = setInterval(() => {
@@ -85,13 +139,32 @@ export default function CellularScreen() {
   const isNoSignal = !signalValue || signalValue === 0 || signalValue === 2147483647;
 
   return (
-    <SafeAreaView edges={["bottom"]} className="flex-1 bg-slate-950">
-      <ScrollView className="flex-1 px-4 py-2">
+    <SafeAreaView edges={["bottom"]} style={{ flex: 1, backgroundColor: "#020617" }} className="flex-1 bg-slate-950">
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 }} className="flex-1 px-4 py-2">
         {/* Title */}
         <View className="mb-6 mt-4">
           <Text className="text-2xl font-bold text-slate-50">Cellular Diagnostics</Text>
           <Text className="text-slate-400 text-xs mt-0.5">Physical network layer and signal monitoring</Text>
         </View>
+
+        {/* Precise Location Explainer Card */}
+        {permissionGranted === false && (
+          <View className="bg-slate-900 border border-amber-500/35 rounded-3xl p-5 mb-5 shadow-lg" style={{ gap: 12 }}>
+            <View className="flex-row items-center gap-2.5">
+              <AlertTriangle size={20} color="#f59e0b" />
+              <Text className="text-sm font-bold text-amber-200">Precise Location Required</Text>
+            </View>
+            <Text className="text-slate-400 text-xs leading-relaxed">
+              Android restricts apps from reading active bands or cell towers without Precise Location access. Your data remains 100% local.
+            </Text>
+            <TouchableOpacity 
+              onPress={requestPermission} 
+              className="bg-amber-500 py-2.5 rounded-xl items-center justify-center active:bg-amber-600 mt-2"
+            >
+              <Text className="text-slate-950 font-black text-xs uppercase tracking-wider">Enable Location Settings</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Real-time Graph */}
         <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 mb-5 shadow-lg">

@@ -314,7 +314,7 @@ class BackgroundService : Service(), SensorEventListener {
       val ruleNotification = NotificationCompat.Builder(this, CHANNEL_ID)
         .setContentTitle("NetPilot Rule Triggered")
         .setContentText("Rule '$ruleName' fired: $triggerType threshold breached!")
-        .setSmallIcon(android.R.drawable.stat_notify_warn)
+        .setSmallIcon(android.R.drawable.ic_dialog_alert)
         .setPriority(NotificationCompat.PRIORITY_HIGH)
         .setAutoCancel(true)
         .build()
