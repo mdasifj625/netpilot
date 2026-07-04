@@ -15,6 +15,7 @@
     "expo-router": "~57.0.2",
     "expo-sqlite": "~57.0.0",
     "expo-status-bar": "~57.0.0",
+    "expo-system-ui": "~57.0.0",
     "lucide-react-native": "^1.23.0",
     "nativewind": "^5.0.0-preview.4",
     "react": "19.2.3",
@@ -69,7 +70,8 @@
     "format:js:check": "prettier --check \"src/**/*.{ts,tsx}\" \"*.{js,mjs,json}\"",
     "format:kt": "./bin/ktlint -F \"modules/**/*.kt\"",
     "format": "yarn format:js && yarn format:kt",
-    "format:check": "yarn format:js:check && yarn lint:kt"
+    "format:check": "yarn format:js:check && yarn lint:kt",
+    "release": "npx expo run:android --variant release && adb install app-release.apk"
   },
   "private": true
 }
