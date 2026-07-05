@@ -24,8 +24,6 @@ import {
   RefreshCw,
   Network,
   Sliders,
-  MapPin,
-  Maximize2,
   Activity,
 } from "lucide-react-native";
 import Svg, { Polyline } from "react-native-svg";
@@ -615,30 +613,6 @@ export default function DashboardScreen() {
               </Text>
             </View>
           </View>
-        </Animated.View>
-
-        {/* Coverage Map Navigation Card */}
-        <Animated.View style={{ transform: [{ translateY: slideAnims[4] }], opacity: fadeAnims[4] }}>
-          <TouchableOpacity
-            onPress={() => router.push("/map")}
-            className="bg-slate-900 border border-slate-800 rounded-3xl p-5 mb-5 shadow-lg flex-row justify-between items-center overflow-hidden relative"
-          >
-            <View className="absolute -right-6 -bottom-6 w-24 h-24 rounded-full bg-sky-500/10 filter blur-xl" />
-            <View className="flex-row items-center gap-3.5 flex-1 pr-4">
-              <View className="p-2.5 rounded-2xl bg-sky-500/10 border border-sky-500/20">
-                <MapPin size={24} color="#0ea5e9" />
-              </View>
-              <View className="flex-1">
-                <Text className="text-lg font-bold text-slate-100">Coverage Tracker</Text>
-                <Text className="text-slate-400 text-xs mt-0.5 leading-relaxed">
-                  Visualize recorded cellular RSRP and download speeds on an interactive heatmap.
-                </Text>
-              </View>
-            </View>
-            <View className="p-2 rounded-full bg-slate-950 border border-slate-800">
-              <Maximize2 size={16} color="#94a3b8" />
-            </View>
-          </TouchableOpacity>
         </Animated.View>
 
         {/* Network Force / Settings Toggles */}
