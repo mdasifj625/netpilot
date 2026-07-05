@@ -45,3 +45,4 @@ build/
 .gradle/
 **/android/build/
 **/android/.gradle/
+keystore-credentials.txt
