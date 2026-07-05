@@ -5,8 +5,7 @@ const withAndroidSigning = (config) => {
     if (config.modResults.language === 'groovy') {
       const buildGradle = config.modResults.contents;
       
-      const signingConfig = `
-    signingConfigs {
+      const releaseSigningConfig = `
         release {
             if (System.getenv("KEYSTORE_BASE64") != null) {
                 def keystoreFile = new File(projectDir, "keystore.jks")
@@ -16,14 +15,20 @@ const withAndroidSigning = (config) => {
                 keyAlias System.getenv("KEY_ALIAS")
                 keyPassword System.getenv("KEY_PASSWORD")
             }
-        }
-    }`;
+        }`;
 
-      if (!buildGradle.includes('signingConfigs {')) {
-        config.modResults.contents = buildGradle.replace(
-          /buildTypes\s*\{/,
-          signingConfig + '\n\n    buildTypes {'
-        );
+      if (!buildGradle.includes('KEYSTORE_BASE64')) {
+        if (buildGradle.includes('signingConfigs {')) {
+          config.modResults.contents = buildGradle.replace(
+            /signingConfigs\s*\{/,
+            'signingConfigs {' + releaseSigningConfig
+          );
+        } else {
+          config.modResults.contents = buildGradle.replace(
+            /buildTypes\s*\{/,
+            '    signingConfigs {' + releaseSigningConfig + '\n    }\n\n    buildTypes {'
+          );
+        }
       }
       
       config.modResults.contents = config.modResults.contents.replace(
