@@ -39,6 +39,20 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": ["expo-router", "expo-status-bar", "expo-sqlite", "./plugins/withAndroidBackgroundService"]
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-sqlite",
+      "./plugins/withAndroidBackgroundService",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInRelease": true,
+            "enableShrinkResourcesInRelease": true
+          }
+        }
+      ]
+    ]
   }
 }
