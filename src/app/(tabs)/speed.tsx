@@ -19,8 +19,10 @@ import { db } from "../../database/db";
 import { networkHistory } from "../../database/schema";
 import { useAppStore } from "../../store/useAppStore";
 import Svg, { Path, Circle, Line, Text as SvgText, Defs, LinearGradient, Stop } from "react-native-svg";
+import * as Haptics from "expo-haptics";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+const AnimatedLine = Animated.createAnimatedComponent(Line);
 
 const Speedometer = ({ speed }: { speed: number }) => {
   const startAngle = 135;
@@ -69,13 +71,45 @@ const Speedometer = ({ speed }: { speed: number }) => {
     }
   }, [isMoving, rippleAnim]);
 
-  // Determine dynamic scale (max speed limits: 100, 200, 500, or 1000 Mbps)
-  const getSpeedometerScale = (currentSpeed: number) => {
+  // Determine dynamic target scale
+  const getTargetMax = (currentSpeed: number) => {
     let max = 100;
     if (currentSpeed > 450) max = 1000;
     else if (currentSpeed > 180) max = 500;
     else if (currentSpeed > 90) max = 200;
+    return max;
+  };
 
+  const targetMax = getTargetMax(speed > 0 ? speed : displaySpeed);
+
+  React.useEffect(() => {
+    if (speed > 0) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    }
+  }, [targetMax, speed]);
+
+  // Animate the scale itself to create the anti-clockwise rotation effect
+  const animatedMax = React.useRef(new Animated.Value(100)).current;
+  const [displayMax, setDisplayMax] = React.useState(100);
+
+  React.useEffect(() => {
+    const listenerId = animatedMax.addListener(({ value }) => {
+      setDisplayMax(value);
+    });
+
+    Animated.timing(animatedMax, {
+      toValue: targetMax,
+      duration: 600, // smooth scale transition
+      useNativeDriver: false,
+    }).start();
+
+    return () => {
+      animatedMax.removeListener(listenerId);
+    };
+  }, [targetMax, animatedMax]);
+
+  // Generate ticks and labels based on targetMax
+  const getScaleElements = (max: number) => {
     const ticksCount = 10;
     const ticks: number[] = [];
     for (let i = 0; i <= ticksCount; i++) {
@@ -88,10 +122,10 @@ const Speedometer = ({ speed }: { speed: number }) => {
       labelTicks.push(Math.round((max / labelsCount) * i));
     }
 
-    return { max, ticks, labelTicks };
+    return { ticks, labelTicks };
   };
 
-  const { max: maxSpeed, ticks, labelTicks } = getSpeedometerScale(speed > 0 ? speed : displaySpeed);
+  const { ticks, labelTicks } = getScaleElements(targetMax);
 
   // Calculate coordinates for the background track arc (270 degrees)
   const startRad = (startAngle * Math.PI) / 180;
@@ -104,7 +138,7 @@ const Speedometer = ({ speed }: { speed: number }) => {
   const trackD = `M ${trackStartX.toFixed(2)} ${trackStartY.toFixed(2)} A ${r} ${r} 0 1 1 ${trackEndX.toFixed(2)} ${trackEndY.toFixed(2)}`;
 
   // Calculate coordinates for the active speed arc
-  const currentSweep = Math.min(1, displaySpeed / maxSpeed) * sweepAngle;
+  const currentSweep = Math.min(1, displaySpeed / displayMax) * sweepAngle;
   const activeEndRad = ((startAngle + currentSweep) * Math.PI) / 180;
   const activeEndX = cx + r * Math.cos(activeEndRad);
   const activeEndY = cy + r * Math.sin(activeEndRad);
@@ -123,15 +157,23 @@ const Speedometer = ({ speed }: { speed: number }) => {
   const innerEndY = cy + innerR * Math.sin(endRad);
   const innerD = `M ${innerStartX.toFixed(2)} ${innerStartY.toFixed(2)} A ${innerR} ${innerR} 0 1 1 ${innerEndX.toFixed(2)} ${innerEndY.toFixed(2)}`;
 
-  const needleAngle = -135 + Math.min(1, displaySpeed / maxSpeed) * sweepAngle;
+  const needleAngle = -135 + Math.min(1, displaySpeed / displayMax) * sweepAngle;
 
   const getTickCoords = (value: number, tickRadius: number) => {
-    const tickAngle = -135 + (value / maxSpeed) * sweepAngle;
+    const tickAngle = -135 + (value / displayMax) * sweepAngle;
     const angleRad = ((tickAngle - 90) * Math.PI) / 180;
     return {
       x: cx + tickRadius * Math.cos(angleRad),
       y: cy + tickRadius * Math.sin(angleRad),
     };
+  };
+
+  const getElementOpacity = (value: number) => {
+    if (value <= displayMax) return 1;
+    // Fade in gracefully as it enters the scale
+    const diff = value - displayMax;
+    const threshold = targetMax * 0.15; // 15% of scale for fade transition
+    return Math.max(0, 1 - diff / threshold);
   };
 
   const rippleR1 = rippleAnim.interpolate({
@@ -172,6 +214,25 @@ const Speedometer = ({ speed }: { speed: number }) => {
         {/* Dynamic circular ripple wave particles */}
         {speed > 0.5 && (
           <>
+            {/* Hyperspace Particles */}
+            {[0, 45, 90, 135, 180, 225, 270, 315].map((angle) => (
+              <AnimatedLine
+                key={`hyper-${angle}`}
+                x1="120"
+                y1="120"
+                x2="120"
+                y2="10"
+                stroke="#38bdf8"
+                strokeWidth="2"
+                strokeDasharray="10 120"
+                strokeDashoffset={rippleAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [120, -10],
+                })}
+                opacity={rippleO2}
+                transform={`rotate(${angle} 120 120)`}
+              />
+            ))}
             <AnimatedCircle
               cx="120"
               cy="120"
@@ -218,6 +279,7 @@ const Speedometer = ({ speed }: { speed: number }) => {
               y2={endCoords.y.toString()}
               stroke={isActive ? "#38bdf8" : "#334155"}
               strokeWidth={isActive ? "2.5" : "1.5"}
+              opacity={getElementOpacity(val)}
             />
           );
         })}
@@ -235,6 +297,7 @@ const Speedometer = ({ speed }: { speed: number }) => {
               fontSize="10"
               fontWeight="bold"
               textAnchor="middle"
+              opacity={getElementOpacity(val)}
             >
               {val}
             </SvgText>
@@ -262,10 +325,85 @@ const Speedometer = ({ speed }: { speed: number }) => {
         {/* Dynamic Scale Indicator Badge */}
         <View className="bg-slate-950/80 border border-slate-800/80 rounded-full px-2 py-0.5 mt-1.5">
           <Text className="text-slate-400 font-mono text-[7px] uppercase tracking-wider font-extrabold">
-            Max {maxSpeed}M
+            Max {targetMax}M
           </Text>
         </View>
       </View>
+    </View>
+  );
+};
+
+const Sparkline = ({ data, color, max }: { data: number[]; color: string; max: number }) => {
+  if (data.length < 2) return null;
+  const width = 176;
+  const height = 40;
+
+  const points = data.map((val, i) => {
+    const x = (i / (data.length - 1)) * width;
+    const y = height - (Math.min(val, max) / max) * height;
+    return `${x},${y}`;
+  });
+
+  const pathData = `M ${points[0]} L ${points.slice(1).join(" L ")}`;
+  const fillData = `${pathData} L ${width},${height} L 0,${height} Z`;
+
+  return (
+    <Svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+      <Defs>
+        <LinearGradient id="fillGrad" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={color} stopOpacity="0.4" />
+          <Stop offset="1" stopColor={color} stopOpacity="0" />
+        </LinearGradient>
+      </Defs>
+      <Path d={fillData} fill="url(#fillGrad)" />
+      <Path d={pathData} stroke={color} strokeWidth="2" fill="none" />
+    </Svg>
+  );
+};
+
+const RadarChart = ({ down, up, ping, jitter }: { down: number; up: number; ping: number; jitter: number }) => {
+  const normDown = Math.min(100, (down / 1000) * 100);
+  const normUp = Math.min(100, (up / 1000) * 100);
+  const normPing = Math.min(100, Math.max(0, 100 - (ping / 200) * 100));
+  const normJitter = Math.min(100, Math.max(0, 100 - (jitter / 50) * 100));
+
+  const center = 100;
+  const radius = 65;
+
+  const getPoint = (val: number, angleDeg: number) => {
+    const angleRad = ((angleDeg - 90) * Math.PI) / 180;
+    const r = (val / 100) * radius;
+    return `${center + r * Math.cos(angleRad)},${center + r * Math.sin(angleRad)}`;
+  };
+
+  const p1 = getPoint(normDown, 0);
+  const p2 = getPoint(normPing, 90);
+  const p3 = getPoint(normUp, 180);
+  const p4 = getPoint(normJitter, 270);
+
+  const polyData = `M ${p1} L ${p2} L ${p3} L ${p4} Z`;
+
+  return (
+    <View className="items-center justify-center my-4">
+      <Svg width="200" height="180" viewBox="0 0 200 180">
+        {[20, 40, 60, 80, 100].map((r) => (
+          <Circle key={r} cx={center} cy={center} r={(r / 100) * radius} stroke="#334155" strokeWidth="1" fill="none" />
+        ))}
+        <Line x1={center} y1={center - radius} x2={center} y2={center + radius} stroke="#334155" />
+        <Line x1={center - radius} y1={center} x2={center + radius} y2={center} stroke="#334155" />
+
+        <Path d={polyData} fill="rgba(14, 165, 233, 0.4)" stroke="#0ea5e9" strokeWidth="2" />
+
+        <Circle cx={p1.split(",")[0]} cy={p1.split(",")[1]} r="4" fill="#0ea5e9" />
+        <Circle cx={p2.split(",")[0]} cy={p2.split(",")[1]} r="4" fill="#2dd4bf" />
+        <Circle cx={p3.split(",")[0]} cy={p3.split(",")[1]} r="4" fill="#818cf8" />
+        <Circle cx={p4.split(",")[0]} cy={p4.split(",")[1]} r="4" fill="#34d399" />
+
+        <SvgText x={center} y={center - radius - 10} fill="#94a3b8" fontSize="10" textAnchor="middle" fontWeight="bold">Download</SvgText>
+        <SvgText x={center + radius + 8} y={center + 3} fill="#94a3b8" fontSize="10" textAnchor="start" fontWeight="bold">Ping</SvgText>
+        <SvgText x={center} y={center + radius + 15} fill="#94a3b8" fontSize="10" textAnchor="middle" fontWeight="bold">Upload</SvgText>
+        <SvgText x={center - radius - 8} y={center + 3} fill="#94a3b8" fontSize="10" textAnchor="end" fontWeight="bold">Jitter</SvgText>
+      </Svg>
     </View>
   );
 };
@@ -326,6 +464,8 @@ export default function SpeedScreen() {
   const [downloadSpeed, setDownloadSpeed] = useState<number>(0);
   const [uploadSpeed, setUploadSpeed] = useState<number>(0);
   const [history, setHistory] = useState<any[]>([]);
+  const [downloadHistory, setDownloadHistory] = useState<number[]>([]);
+  const [uploadHistory, setUploadHistory] = useState<number[]>([]);
 
   // Animation values for UI/UX enhancements
   const pulseAnim = React.useRef(new Animated.Value(1)).current;
@@ -366,6 +506,15 @@ export default function SpeedScreen() {
       fadeAnim.setValue(0);
     }
   }, [status, fadeAnim]);
+
+  // Haptic feedback for status changes
+  React.useEffect(() => {
+    if (status === "ping" || status === "download" || status === "upload") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } else if (status === "finished") {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+  }, [status]);
 
   const fetchSpeedHistory = useCallback(async () => {
     try {
@@ -470,8 +619,10 @@ export default function SpeedScreen() {
       setProgress(event.progress);
       if (event.type === "download") {
         setDownloadSpeed(event.speedMbps);
+        setDownloadHistory((prev) => [...prev.slice(-30), event.speedMbps]);
       } else if (event.type === "upload") {
         setUploadSpeed(event.speedMbps);
+        setUploadHistory((prev) => [...prev.slice(-30), event.speedMbps]);
       }
     });
 
@@ -513,6 +664,8 @@ export default function SpeedScreen() {
     setJitter(null);
     setDownloadSpeed(0);
     setUploadSpeed(0);
+    setDownloadHistory([]);
+    setUploadHistory([]);
     setProgress(0);
     setStatus("ping");
 
@@ -552,11 +705,19 @@ export default function SpeedScreen() {
           <Speedometer speed={currentSpeed} />
 
           {status !== "idle" && status !== "finished" && (
-            <View className="w-44 bg-slate-950 border border-slate-800 h-2.5 rounded-full overflow-hidden mt-3 shadow-inner">
-              <View
-                style={{ width: `${progress * 100}%` }}
-                className={`h-full ${status === "download" ? "bg-sky-500" : "bg-indigo-400"}`}
-              />
+            <View className="w-44 h-10 mt-3 items-center justify-center">
+              {status === "download" && downloadHistory.length > 0 ? (
+                <Sparkline data={downloadHistory} color="#0ea5e9" max={currentSpeed > 450 ? 1000 : currentSpeed > 180 ? 500 : currentSpeed > 90 ? 200 : 100} />
+              ) : status === "upload" && uploadHistory.length > 0 ? (
+                <Sparkline data={uploadHistory} color="#818cf8" max={currentSpeed > 450 ? 1000 : currentSpeed > 180 ? 500 : currentSpeed > 90 ? 200 : 100} />
+              ) : (
+                <View className="w-full bg-slate-950 border border-slate-800 h-2.5 rounded-full overflow-hidden shadow-inner">
+                  <View
+                    style={{ width: `${progress * 100}%` }}
+                    className={`h-full ${status === "download" ? "bg-sky-500" : "bg-indigo-400"}`}
+                  />
+                </View>
+              )}
             </View>
           )}
 
@@ -691,6 +852,9 @@ export default function SpeedScreen() {
               </View>
               <Text className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Network Rating</Text>
             </View>
+            
+            <RadarChart down={downloadSpeed} up={uploadSpeed} ping={ping ?? 0} jitter={jitter ?? 0} />
+            
             <Text
               className={`text-sm font-black mt-1 ${
                 downloadSpeed > 100

@@ -12,7 +12,7 @@ import {
   RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import * as Location from "expo-location";
 import * as Device from "expo-device";
 import {
@@ -41,7 +41,6 @@ import { useAppStore } from "../../store/useAppStore";
 import { resolveMacVendor } from "../../utils/macVendors";
 
 export default function DashboardScreen() {
-  const router = useRouter();
   const { settings } = useAppStore();
   const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null);
   const [cellDetails, setCellDetails] = useState<CellularDiagnosticsData | null>(null);

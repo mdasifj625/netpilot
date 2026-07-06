@@ -4321,6 +4321,11 @@ expo-glass-effect@^57.0.0:
   resolved "https://registry.yarnpkg.com/expo-glass-effect/-/expo-glass-effect-57.0.0.tgz#2842ae7d49305ebbc18bed27b5eca543ce1f24d2"
   integrity sha512-QadzKSKpjXOlkIEnkX7SqHwCgUJZLjhWUvg1AauaUgKVnz35Ror41juM4y+KNr9pFxnukSDUz8L+UvdZVCNu6Q==
 
+expo-haptics@~57.0.0:
+  version "57.0.0"
+  resolved "https://registry.yarnpkg.com/expo-haptics/-/expo-haptics-57.0.0.tgz#8dfda842d5a7a0c0fc1af8a8063bf402d77a7eeb"
+  integrity sha512-va+uB/DoMlT9f0OJ8v24iNqs+YH6Q6wip+LLjVvalbJzGK8LvZQ+gIiauogFxAAFLQIJzrQVJGf+0BmV3q13bQ==
+
 expo-keep-awake@~57.0.0:
   version "57.0.0"
   resolved "https://registry.yarnpkg.com/expo-keep-awake/-/expo-keep-awake-57.0.0.tgz#718bb57f9e62205092dc7fa783a10d5d95a8480d"
