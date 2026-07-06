@@ -24,6 +24,15 @@ import * as Haptics from "expo-haptics";
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 const AnimatedLine = Animated.createAnimatedComponent(Line);
 
+// Determine dynamic target scale
+const getTargetMax = (currentSpeed: number) => {
+  let max = 100;
+  while (currentSpeed >= max * 0.9 && max < 1000) {
+    max += 100;
+  }
+  return max;
+};
+
 const Speedometer = ({ speed }: { speed: number }) => {
   const startAngle = 135;
   const sweepAngle = 270;
@@ -71,22 +80,13 @@ const Speedometer = ({ speed }: { speed: number }) => {
     }
   }, [isMoving, rippleAnim]);
 
-  // Determine dynamic target scale
-  const getTargetMax = (currentSpeed: number) => {
-    let max = 100;
-    if (currentSpeed > 450) max = 1000;
-    else if (currentSpeed > 180) max = 500;
-    else if (currentSpeed > 90) max = 200;
-    return max;
-  };
-
   const targetMax = getTargetMax(speed > 0 ? speed : displaySpeed);
 
   React.useEffect(() => {
-    if (speed > 0) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    if (targetMax > 100) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-  }, [targetMax, speed]);
+  }, [targetMax]);
 
   // Animate the scale itself to create the anti-clockwise rotation effect
   const animatedMax = React.useRef(new Animated.Value(100)).current;
@@ -247,7 +247,7 @@ const Speedometer = ({ speed }: { speed: number }) => {
               cy="120"
               r={rippleR2}
               fill="none"
-              stroke="#818cf8"
+              stroke="#ec4899"
               strokeWidth="1"
               opacity={rippleO2}
             />
@@ -432,7 +432,7 @@ const SpeedHistoryChart = ({ data }: { data: any[] }) => {
             <View key={item.id || idx} className="items-center flex-1 mx-1.5" style={{ gap: 2 }}>
               <View className="flex-row items-end h-24 gap-1 w-full justify-center">
                 <View style={{ height: `${dlHeight}%` }} className="w-2.5 bg-sky-500 rounded-t-sm" />
-                <View style={{ height: `${ulHeight}%` }} className="w-2.5 bg-indigo-400 rounded-t-sm" />
+                <View style={{ height: `${ulHeight}%` }} className="w-2.5 bg-pink-500 rounded-t-sm" />
               </View>
               <Text className="text-[8px] text-slate-500 font-bold mt-1">#{data.length - idx}</Text>
             </View>
@@ -445,7 +445,7 @@ const SpeedHistoryChart = ({ data }: { data: any[] }) => {
           <Text className="text-slate-400 text-[9px] font-bold uppercase tracking-wider">Download</Text>
         </View>
         <View className="flex-row items-center gap-1.5">
-          <View className="w-2.5 h-2.5 rounded-sm bg-indigo-400" />
+          <View className="w-2.5 h-2.5 rounded-sm bg-pink-500" />
           <Text className="text-slate-400 text-[9px] font-bold uppercase tracking-wider">Upload</Text>
         </View>
       </View>
@@ -466,6 +466,7 @@ export default function SpeedScreen() {
   const [history, setHistory] = useState<any[]>([]);
   const [downloadHistory, setDownloadHistory] = useState<number[]>([]);
   const [uploadHistory, setUploadHistory] = useState<number[]>([]);
+  const [networkInfo, setNetworkInfo] = useState<{ ip: string; isp: string } | null>(null);
 
   // Animation values for UI/UX enhancements
   const pulseAnim = React.useRef(new Animated.Value(1)).current;
@@ -510,7 +511,7 @@ export default function SpeedScreen() {
   // Haptic feedback for status changes
   React.useEffect(() => {
     if (status === "ping" || status === "download" || status === "upload") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     } else if (status === "finished") {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
@@ -533,6 +534,15 @@ export default function SpeedScreen() {
   useFocusEffect(
     React.useCallback(() => {
       fetchSpeedHistory();
+      
+      fetch("http://ip-api.com/json/")
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === "success") {
+            setNetworkInfo({ ip: data.query, isp: data.isp });
+          }
+        })
+        .catch(err => console.log("Failed to fetch IP info:", err));
     }, [fetchSpeedHistory])
   );
 
@@ -669,7 +679,7 @@ export default function SpeedScreen() {
     setProgress(0);
     setStatus("ping");
 
-    const success = startSpeedTest(DOWNLOAD_URL, UPLOAD_URL);
+    const success = startSpeedTest(DOWNLOAD_URL, UPLOAD_URL, settings.isMultiConnection);
     if (!success) {
       Alert.alert("Error", "Could not initiate native speed test routine.");
       setStatus("idle");
@@ -697,7 +707,7 @@ export default function SpeedScreen() {
           {/* Animated Glow during active testing */}
           {(status === "download" || status === "upload") && (
             <View
-              className={`absolute top-10 w-44 h-44 rounded-full filter blur-3xl opacity-15 ${status === "download" ? "bg-sky-500" : "bg-indigo-500"}`}
+              className={`absolute top-10 w-44 h-44 rounded-full filter blur-3xl opacity-15 ${status === "download" ? "bg-sky-500" : "bg-pink-500"}`}
             />
           )}
 
@@ -707,14 +717,14 @@ export default function SpeedScreen() {
           {status !== "idle" && status !== "finished" && (
             <View className="w-44 h-10 mt-3 items-center justify-center">
               {status === "download" && downloadHistory.length > 0 ? (
-                <Sparkline data={downloadHistory} color="#0ea5e9" max={currentSpeed > 450 ? 1000 : currentSpeed > 180 ? 500 : currentSpeed > 90 ? 200 : 100} />
+                <Sparkline data={downloadHistory} color="#0ea5e9" max={getTargetMax(currentSpeed)} />
               ) : status === "upload" && uploadHistory.length > 0 ? (
-                <Sparkline data={uploadHistory} color="#818cf8" max={currentSpeed > 450 ? 1000 : currentSpeed > 180 ? 500 : currentSpeed > 90 ? 200 : 100} />
+                <Sparkline data={uploadHistory} color="#ec4899" max={getTargetMax(currentSpeed)} />
               ) : (
                 <View className="w-full bg-slate-950 border border-slate-800 h-2.5 rounded-full overflow-hidden shadow-inner">
                   <View
                     style={{ width: `${progress * 100}%` }}
-                    className={`h-full ${status === "download" ? "bg-sky-500" : "bg-indigo-400"}`}
+                    className={`h-full ${status === "download" ? "bg-sky-500" : "bg-pink-500"}`}
                   />
                 </View>
               )}
@@ -770,14 +780,14 @@ export default function SpeedScreen() {
           <Animated.View
             style={{
               borderColor:
-                status === "upload" ? "#818cf8" : status === "finished" ? "rgba(129, 140, 248, 0.4)" : "#1e293b",
+                status === "upload" ? "#ec4899" : status === "finished" ? "rgba(236, 72, 153, 0.4)" : "#1e293b",
               opacity: status === "upload" ? pulseAnim : 1.0,
               borderWidth: 1,
             }}
             className="flex-1 min-w-[45%] bg-slate-900 rounded-2xl p-4 shadow-md flex-row items-center gap-3"
           >
-            <View className="p-2 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
-              <ArrowUp size={20} color="#818cf8" />
+            <View className="p-2 rounded-xl bg-pink-500/10 border border-pink-500/20">
+              <ArrowUp size={20} color="#ec4899" />
             </View>
             <View>
               <Text className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Upload</Text>
@@ -831,6 +841,22 @@ export default function SpeedScreen() {
               </Text>
             </View>
           </Animated.View>
+        </View>
+
+        {/* Network Info Footer */}
+        <View className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex-row justify-between mb-4 mt-2">
+          <View>
+            <Text className="text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-0.5">Your Network</Text>
+            <Text className="text-slate-200 text-sm font-semibold">{networkInfo?.isp || "Fetching ISP..."}</Text>
+            <Text className="text-slate-400 text-xs mt-0.5">{networkInfo?.ip || "—"}</Text>
+          </View>
+          <View className="items-end">
+            <Text className="text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-0.5">Test Server</Text>
+            <Text className="text-sky-400 text-sm font-semibold">
+              {settings.selectedServerId === "aws-edge" ? "AWS Edge" : settings.selectedServerId === "fastly-edge" ? "Fastly CDN" : "Cloudflare Edge"}
+            </Text>
+            <Text className="text-slate-400 text-xs mt-0.5">Auto / Nearest</Text>
+          </View>
         </View>
 
         {/* Audit Completion rating summary Card */}

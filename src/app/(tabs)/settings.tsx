@@ -92,17 +92,15 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleUpdateDownloadUrl = (url: string) => {
-    updateSettings({ customDownloadUrl: url });
+  const handleToggleMultiConnection = (val: boolean) => {
+    updateSettings({ isMultiConnection: val });
   };
 
-  const handleUpdateUploadUrl = (url: string) => {
-    updateSettings({ customUploadUrl: url });
-  };
-
-  const handleUpdatePingTarget = (url: string) => {
-    updateSettings({ customPingTarget: url });
-  };
+  const TEST_SERVERS = [
+    { id: "cloudflare-auto", name: "Cloudflare (Auto Nearest)", dl: "https://speed.cloudflare.com/__down?bytes=250000000", ul: "https://speed.cloudflare.com/__up" },
+    { id: "aws-edge", name: "AWS Edge (Mock)", dl: "https://speed.cloudflare.com/__down?bytes=250000000", ul: "https://speed.cloudflare.com/__up" },
+    { id: "fastly-edge", name: "Fastly CDN (Mock)", dl: "https://speed.cloudflare.com/__down?bytes=250000000", ul: "https://speed.cloudflare.com/__up" }
+  ];
 
   const handleClearLogs = async () => {
     Alert.alert("Confirm Action", "Are you sure you want to delete all logged network history?", [
@@ -263,56 +261,49 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Speed Test Server Overrides */}
+        {/* Speed Test Settings */}
         <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-lg" style={{ gap: 12 }}>
           <View className="flex-row items-center gap-2 mb-2">
             <Sliders size={18} color="#818cf8" />
-            <Text className="text-sm font-bold text-slate-200">Speed Test Server Overrides</Text>
+            <Text className="text-sm font-bold text-slate-200">Speed Test Configuration</Text>
           </View>
 
-          <View>
-            <Text className="text-slate-400 text-[9px] uppercase font-bold tracking-wider mb-1">
-              Custom Download URL (HTTP GET)
-            </Text>
-            <TextInput
-              value={settings.customDownloadUrl}
-              onChangeText={handleUpdateDownloadUrl}
-              placeholder="Default: Cloudflare Edge CDN (15MB)"
-              placeholderTextColor="#64748b"
-              autoCapitalize="none"
-              autoCorrect={false}
-              className="bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 text-xs font-mono"
+          <View className="flex-row justify-between items-center py-2.5">
+            <View className="flex-1 pr-4">
+              <Text className="text-slate-200 font-semibold text-sm">Multi Connection</Text>
+              <Text className="text-slate-400 text-xs mt-0.5 leading-relaxed">
+                Use multiple simultaneous streams to maximize throughput, or single stream to diagnose throttling.
+              </Text>
+            </View>
+            <Switch
+              value={settings.isMultiConnection}
+              onValueChange={handleToggleMultiConnection}
+              trackColor={{ false: "#1e293b", true: "#818cf8" }}
+              thumbColor={settings.isMultiConnection ? "#f8fafc" : "#64748b"}
             />
           </View>
 
-          <View>
-            <Text className="text-slate-400 text-[9px] uppercase font-bold tracking-wider mb-1">
-              Custom Upload URL (HTTP POST)
+          <View className="mt-2 pt-4 border-t border-slate-800/40">
+            <Text className="text-slate-400 text-[9px] uppercase font-bold tracking-wider mb-2">
+              Select Edge Server
             </Text>
-            <TextInput
-              value={settings.customUploadUrl || ""}
-              onChangeText={handleUpdateUploadUrl}
-              placeholder="Default: HTTP POST Echo (10MB)"
-              placeholderTextColor="#64748b"
-              autoCapitalize="none"
-              autoCorrect={false}
-              className="bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 text-xs font-mono"
-            />
-          </View>
-
-          <View>
-            <Text className="text-slate-400 text-[9px] uppercase font-bold tracking-wider mb-1">
-              Custom Ping Target (HTTP HEAD)
-            </Text>
-            <TextInput
-              value={settings.customPingTarget}
-              onChangeText={handleUpdatePingTarget}
-              placeholder="Default: https://1.1.1.1"
-              placeholderTextColor="#64748b"
-              autoCapitalize="none"
-              autoCorrect={false}
-              className="bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 text-xs font-mono"
-            />
+            <View style={{ gap: 8 }}>
+              {TEST_SERVERS.map((srv) => (
+                <TouchableOpacity
+                  key={srv.id}
+                  onPress={() => updateSettings({ selectedServerId: srv.id, customDownloadUrl: srv.dl, customUploadUrl: srv.ul })}
+                  className={`px-3 py-2.5 rounded-xl border ${
+                    settings.selectedServerId === srv.id
+                      ? "bg-indigo-500/10 border-indigo-500/40"
+                      : "bg-slate-950/40 border-slate-800"
+                  }`}
+                >
+                  <Text className={`text-xs font-semibold ${settings.selectedServerId === srv.id ? "text-indigo-400" : "text-slate-300"}`}>
+                    {srv.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
         </View>
 

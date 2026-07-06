@@ -42,9 +42,9 @@ let isSimulating = false;
 let simulateIntervals: any[] = [];
 let simulateTimeouts: any[] = [];
 
-export function startSpeedTest(downloadUrl: string, uploadUrl: string): boolean {
+export function startSpeedTest(downloadUrl: string, uploadUrl: string, isMulti: boolean): boolean {
   if (NetworkSpeed) {
-    return NetworkSpeed.startSpeedTest(downloadUrl, uploadUrl);
+    return NetworkSpeed.startSpeedTest(downloadUrl, uploadUrl, isMulti);
   }
 
   if (isSimulating) return false;

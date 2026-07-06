@@ -60,6 +60,8 @@ interface AppSettings {
   customDownloadUrl: string;
   customUploadUrl: string;
   customPingTarget: string;
+  selectedServerId: string;
+  isMultiConnection: boolean;
 }
 
 interface AppStore {
@@ -78,6 +80,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   customDownloadUrl: "",
   customUploadUrl: "",
   customPingTarget: "https://1.1.1.1",
+  selectedServerId: "cloudflare-auto",
+  isMultiConnection: true,
 };
 
 export const useAppStore = create<AppStore>()(

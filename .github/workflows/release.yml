@@ -50,8 +50,15 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: ./gradlew assembleRelease
 
+      - name: Extract Version and Rename APK
+        id: rename_apk
+        run: |
+          VERSION=$(jq -r '.expo.version' app.json)
+          mv android/app/build/outputs/apk/release/app-release.apk android/app/build/outputs/apk/release/NetPilot-${VERSION}.apk
+          echo "APK_PATH=android/app/build/outputs/apk/release/NetPilot-${VERSION}.apk" >> $GITHUB_ENV
+
       - name: Create Release and Upload APK
         uses: softprops/action-gh-release@v3
         with:
-          files: android/app/build/outputs/apk/release/app-release.apk
+          files: ${{ env.APK_PATH }}
           generate_release_notes: true

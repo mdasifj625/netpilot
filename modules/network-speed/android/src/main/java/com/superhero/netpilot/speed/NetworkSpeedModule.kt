@@ -53,10 +53,10 @@ class NetworkSpeedModule : Module() {
 
             Events("onSpeedTestProgress", "onSpeedTestFinished", "onPingFinished", "onPingProgress")
 
-            Function("startSpeedTest") { downloadUrl: String, uploadUrl: String ->
+            Function("startSpeedTest") { downloadUrl: String, uploadUrl: String, isMulti: Boolean ->
                 if (isRunning) return@Function false
                 isRunning = true
-                runSpeedTest(downloadUrl, uploadUrl)
+                runSpeedTest(downloadUrl, uploadUrl, isMulti)
                 return@Function true
             }
 
@@ -69,6 +69,7 @@ class NetworkSpeedModule : Module() {
     private fun runSpeedTest(
         downloadUrl: String,
         uploadUrl: String,
+        isMulti: Boolean,
     ) {
         executor.execute {
             try {
@@ -78,7 +79,7 @@ class NetworkSpeedModule : Module() {
                 if (!isRunning) return@execute
 
                 // Step 2: Download Test
-                runDownloadTest(downloadUrl)
+                runDownloadTest(downloadUrl, isMulti)
 
                 if (!isRunning) return@execute
 
@@ -171,9 +172,12 @@ class NetworkSpeedModule : Module() {
         return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
     }
 
-    private fun runDownloadTest(url: String) {
+    private fun runDownloadTest(
+        url: String,
+        isMulti: Boolean,
+    ) {
         val isWifi = isWifiConnection()
-        val threadCount = if (isWifi) 8 else 4
+        val threadCount = if (isMulti) (if (isWifi) 8 else 4) else 1
         val downloadExecutor = Executors.newFixedThreadPool(threadCount)
 
         val totalBytesRead = AtomicLong(0L)
