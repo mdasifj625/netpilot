@@ -1,8 +1,6 @@
 package com.superhero.netpilot.cellular
 
 import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.Service
 import android.content.ContentValues
 import android.content.Context
@@ -15,13 +13,11 @@ import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
-import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
-import android.telephony.CellInfoLte
-import android.telephony.CellInfoNr
 import android.telephony.TelephonyManager
-import androidx.core.app.NotificationCompat
+import com.superhero.netpilot.cellular.utils.CellularSignalHelper
+import com.superhero.netpilot.cellular.utils.TelemetryNotificationHelper
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
@@ -31,8 +27,7 @@ class BackgroundService :
     Service(),
     SensorEventListener {
     companion object {
-        private const val CHANNEL_ID = "netpilot_telemetry_channel"
-        private const val NOTIFICATION_ID = 4636
+        private const val NOTIFICATION_ID = TelemetryNotificationHelper.NOTIFICATION_ID
     }
 
     private var scheduler: ScheduledExecutorService? = null
@@ -169,40 +164,19 @@ class BackgroundService :
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel =
-                NotificationChannel(
-                    CHANNEL_ID,
-                    "NetPilot Telemetry Service",
-                    NotificationManager.IMPORTANCE_LOW,
-                ).apply {
-                    description = "Provides persistent cellular signal background logging."
-                }
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.createNotificationChannel(channel)
-        }
+        TelemetryNotificationHelper.createNotificationChannel(this)
     }
 
     private fun buildTelemetryNotification(
         status: String,
         signal: String,
-    ): Notification =
-        NotificationCompat
-            .Builder(this, CHANNEL_ID)
-            .setContentTitle("NetPilot Active")
-            .setContentText("$status • $signal")
-            .setSmallIcon(android.R.drawable.ic_menu_compass)
-            .setOnlyAlertOnce(true)
-            .setOngoing(true)
-            .build()
+    ): Notification = TelemetryNotificationHelper.buildTelemetryNotification(this, status, signal)
 
     private fun updateNotification(
         status: String,
         signal: String,
     ) {
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val notification = buildTelemetryNotification(status, signal)
-        manager.notify(NOTIFICATION_ID, notification)
+        TelemetryNotificationHelper.updateNotification(this, status, signal)
     }
 
     private fun initializeDatabase() {
@@ -312,35 +286,7 @@ class BackgroundService :
         }
     }
 
-    private fun getRSRP(tm: TelephonyManager): Int? {
-        try {
-            val cellInfos = tm.allCellInfo ?: return null
-            for (cellInfo in cellInfos) {
-                if (cellInfo.isRegistered) {
-                    when (cellInfo) {
-                        is CellInfoLte -> return cellInfo.cellSignalStrength.rsrp
-                        is CellInfoNr -> {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                                return cellInfo.cellSignalStrength.dbm
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (e: SecurityException) {
-            // Permission not granted
-        } catch (e: Exception) {
-            // Ignore
-        }
-        return null
-    }
+    private fun getRSRP(tm: TelephonyManager): Int? = CellularSignalHelper.getRSRP(tm)
 
-    private fun getNetworkTypeName(type: Int): String =
-        when (type) {
-            TelephonyManager.NETWORK_TYPE_LTE -> "LTE"
-            TelephonyManager.NETWORK_TYPE_NR -> "5G"
-            TelephonyManager.NETWORK_TYPE_HSDPA, TelephonyManager.NETWORK_TYPE_HSPA, TelephonyManager.NETWORK_TYPE_HSUPA -> "3G"
-            TelephonyManager.NETWORK_TYPE_GPRS, TelephonyManager.NETWORK_TYPE_EDGE -> "2G"
-            else -> "UNKNOWN"
-        }
+    private fun getNetworkTypeName(type: Int): String = CellularSignalHelper.getNetworkTypeName(type)
 }

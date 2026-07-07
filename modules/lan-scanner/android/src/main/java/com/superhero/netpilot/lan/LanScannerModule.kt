@@ -1,10 +1,8 @@
 package com.superhero.netpilot.lan
 
 import android.content.Context
-import android.net.ConnectivityManager
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
-import java.net.InetAddress
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -91,7 +89,9 @@ class LanScannerModule : Module() {
     private fun startPingSweep() {
         Executors.newSingleThreadExecutor().execute {
             try {
-                val subnet = getLocalSubnet()
+                val subnet =
+                    com.superhero.netpilot.lan.utils.LanScannerHelper
+                        .getLocalSubnet(context)
                 if (subnet == null) {
                     isScanning = false
                     sendEvent("onScanFinished", mapOf("devicesCount" to 0))
@@ -108,15 +108,21 @@ class LanScannerModule : Module() {
                     if (!isScanning) break
                     val ip = "$subnet.$i"
                     threadPool.execute {
-                        if (isHostReachable(ip)) {
+                        if (com.superhero.netpilot.lan.utils.LanScannerHelper
+                                .isHostReachable(ip)
+                        ) {
                             activeDevices.add(ip)
-                            val hostname = getHostName(ip)
+                            val hostname =
+                                com.superhero.netpilot.lan.utils.LanScannerHelper
+                                    .getHostName(ip)
                             sendEvent(
                                 "onDeviceFound",
                                 mapOf(
                                     "ip" to ip,
                                     "hostname" to hostname,
-                                    "ping" to getPingTime(ip),
+                                    "ping" to
+                                        com.superhero.netpilot.lan.utils.LanScannerHelper
+                                            .getPingTime(ip),
                                 ),
                             )
                         }
@@ -138,56 +144,6 @@ class LanScannerModule : Module() {
                 isScanning = false
                 sendEvent("onScanFinished", mapOf("devicesCount" to 0))
             }
-        }
-    }
-
-    private fun getLocalSubnet(): String? {
-        try {
-            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            val activeNetwork = cm.activeNetwork ?: return null
-            val linkProperties = cm.getLinkProperties(activeNetwork) ?: return null
-            val ipv4 =
-                linkProperties.linkAddresses
-                    .map { it.address.hostAddress }
-                    .firstOrNull { it != null && !it.contains(":") } ?: return null
-
-            val parts = ipv4.split(".")
-            if (parts.size >= 3) {
-                return "${parts[0]}.${parts[1]}.${parts[2]}"
-            }
-        } catch (e: Exception) {
-            // Ignore
-        }
-        return null
-    }
-
-    private fun isHostReachable(ip: String): Boolean =
-        try {
-            val process = Runtime.getRuntime().exec("ping -c 1 -w 1 $ip")
-            val exitCode = process.waitFor()
-            exitCode == 0
-        } catch (e: Exception) {
-            false
-        }
-
-    private fun getHostName(ip: String): String? =
-        try {
-            val addr = InetAddress.getByName(ip)
-            val host = addr.hostName
-            if (host == ip) null else host
-        } catch (e: Exception) {
-            null
-        }
-
-    private fun getPingTime(ip: String): Double {
-        try {
-            val startTime = System.nanoTime()
-            val process = Runtime.getRuntime().exec("ping -c 1 -w 1 $ip")
-            process.waitFor()
-            val endTime = System.nanoTime()
-            return (endTime - startTime) / 1_000_000.0 // convert to milliseconds
-        } catch (e: Exception) {
-            return -1.0
         }
     }
 }

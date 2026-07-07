@@ -38,6 +38,15 @@ NetPilot is built on a hybrid architecture combining React Native Expo (SDK 57) 
    yarn android
    ```
 
+## UI & State Architecture (MVVM)
+
+NetPilot uses a strict Model-View-ViewModel (MVVM) architecture for its React Native frontend to maintain a clean separation of concerns:
+- **Views (`src/app/`)**: Screen files should strictly handle routing and declarative UI composition. No heavy business logic or state mutations should exist here.
+- **ViewModels (`src/features/*/use*ViewModel.ts`)**: All state, native module listeners, sensor polling, and business logic are contained in dedicated hooks (e.g., `useSpeedViewModel`, `useWifiViewModel`).
+- **Components (`src/features/*/components/`)**: Visual elements (like gauge charts, signal meters, and custom cards) are extracted into reusable stateless (or localized state) UI components.
+
+When building new UI features, please adhere to this pattern by creating the corresponding feature folder under `src/features/`.
+
 ## Release Pipeline & CI/CD
 
 NetPilot uses GitHub Actions to automate its release pipeline. 
@@ -50,6 +59,7 @@ NetPilot uses GitHub Actions to automate its release pipeline.
 NetPilot uses custom local Kotlin modules inside the `/modules/` directory mapped via the Expo Modules API.
 
 - `modules/<module-name>/android/src/...` houses Kotlin module classes.
+- For complex logic (e.g. ICMP ping sweeps, HTTP speed tests), extract the implementation into `.../utils/` helper classes to keep the main `Module` class clean.
 - `modules/<module-name>/index.ts` houses TypeScript wrappers.
 
 If you add new native methods, ensure you update the corresponding TypeScript exports to compile cleanly.

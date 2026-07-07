@@ -6,7 +6,7 @@ NetPilot is a modern, high-performance Android network diagnostics, telemetry, a
 
 ## 🚀 Features Built So Far
 
-1.  **Dashboard Screen (`src/app/(tabs)/index.tsx`)**: Displays active internet status, cellular details, IP configurations (local IP, Gateway, DNS, VPN status), location permission banners, and an active **Hardware Telemetry** engine tracking System RAM and Battery Degradation accurately.
+1.  **Dashboard Screen (`src/app/(tabs)/index.tsx`)**: Displays active internet status, cellular details, IP configurations (local IP, Gateway, DNS, VPN status), location permission banners, and an active **Hardware Telemetry** engine tracking System RAM and Battery Degradation accurately. Features robust Dual-SIM fallback tracking, correctly isolating signal strengths by cross-referencing cell CGI (MCC/MNC) with active `SubscriptionManager` slot indices to prevent data bleeding between SIMs.
 2.  **Cellular Diagnostics (`src/app/(tabs)/cellular.tsx`)**: Shows physical signal values (RSRP, RSRQ, RSSI, SINR) and network tower IDs (PCI, TAC, CID, CGI). It calculates the active **eNodeB ID** and **Sector ID** from the LTE CID and renders a rolling 20-sample signal history chart.
 3.  **WiFi Analyzer (`src/app/(tabs)/wifi.tsx`)**: Scans surrounding access points, rating the optimal non-overlapping channels (1, 6, 11) in the 2.4 GHz band, showing SSID, RSSI, frequency, and Wi-Fi standard (Wi-Fi 4/5/6/7).
 4.  **LAN Devices Scanner (`src/app/(tabs)/wifi.tsx` - LAN Tab)**: Performs fast, parallel multi-threaded subnet ICMP ping sweeps (using a native pool of 40 Kotlin threads) to list active IPs, hostnames, and round-trip latencies.
@@ -21,7 +21,6 @@ NetPilot is a modern, high-performance Android network diagnostics, telemetry, a
 
 ```text
 netpilot/
-├── .agents/                   # AI Assistant rules and guidelines (AGENTS.md)
 ├── app.json                   # Expo configs, permissions, and plugin lists
 ├── package.json               # JavaScript dependencies and build scripts
 ├── postcss.config.mjs         # PostCSS configuration for Tailwind v4
@@ -39,6 +38,9 @@ netpilot/
 │   └── network-speed/         # OkHttp speed test loops
 └── src/
     ├── app/                   # File-based routing (Expo Router)
+    ├── components/            # Global UI Components (e.g. AppBackground)
+    ├── features/              # UI Components & MVVM ViewModels (Dashboard, Speed, Wifi)
+    ├── hooks/                 # Global React Hooks (e.g. useAppPermissions)
     ├── store/                 # Zustand state + MMKV persistent settings
     └── database/              # SQLite database initialization & Drizzle schemas
 ```
@@ -98,7 +100,7 @@ NetPilot utilizes a highly automated CI/CD pipeline. Pushing a tag (e.g., `v1.3.
 ## 🔒 Permissions & Security Notes
 Because NetPilot reads cellular network channels and searches for local devices, it requests the following permissions on boot:
 *   `ACCESS_FINE_LOCATION`: Required to access cell tower details and perform Wi-Fi scans.
-*   `READ_PHONE_STATE`: Required to read active carrier telemetry.
+*   `READ_PHONE_STATE`: Required to read active carrier telemetry, query the `SubscriptionManager` for precise multi-SIM identification, and fetch real-time un-cached fallback signal strengths.
 *   `FOREGROUND_SERVICE` & `FOREGROUND_SERVICE_SPECIAL_USE`: Required to register the telemetry service in the background.
 
 ---

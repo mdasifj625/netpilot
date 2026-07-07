@@ -8,6 +8,9 @@ module.exports = defineConfig([
     ignores: ["dist/*"],
     rules: {
       "react-hooks/refs": "off",
+      "@typescript-eslint/no-unused-vars": "error",
+      "@typescript-eslint/no-require-imports": "error",
+      "react-hooks/exhaustive-deps": "error",
     },
   },
 ]);

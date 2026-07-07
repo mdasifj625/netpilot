@@ -1,248 +1,55 @@
-/* eslint-disable react-hooks/exhaustive-deps */
-import React, { useState, useCallback } from "react";
+ 
+import React from "react";
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
-  Alert,
   Platform,
-  Linking,
   Animated,
   RefreshControl,
+  Alert,
 } from "react-native";
 
-import { useFocusEffect } from "expo-router";
-import * as Location from "expo-location";
 import * as Device from "expo-device";
 import {
   Shield,
   Radio,
-  Wifi,
   Gauge,
   AlertTriangle,
   Network,
   Sliders,
-  Activity,
   Cpu,
   ChevronDown,
   ChevronUp,
-  Zap,
-  Globe,
 } from "lucide-react-native";
 import Svg, { Polyline } from "react-native-svg";
 
-// Import custom native modules
-import {
-  getCellularDetails,
-  getNetworkDetails,
-  CellularDiagnosticsData,
-  NetworkDetailsData,
-} from "../../../modules/cellular-diagnostics";
-import { getConnectedWifiInfo, ConnectedWifiInfo } from "../../../modules/wifi-analyzer";
 import { launchRadioInfo, launchMobileNetworkSettings } from "../../../modules/network-intent";
-import { useAppStore } from "../../store/useAppStore";
+
+import { useDashboardViewModel } from "../../features/dashboard/useDashboardViewModel";
+import { WifiLinkCard } from "../../features/dashboard/components/WifiLinkCard";
+import { CellularLinkCard } from "../../features/dashboard/components/CellularLinkCard";
 
 export default function DashboardScreen() {
-  const { settings } = useAppStore();
-  const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null);
-  const [cellDetails, setCellDetails] = useState<CellularDiagnosticsData[] | null>(null);
-  const [netDetails, setNetDetails] = useState<NetworkDetailsData | null>(null);
-  const [wifiDetails, setWifiDetails] = useState<ConnectedWifiInfo | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [pingLatency, setPingLatency] = useState<number | null>(null);
-  const [pingHistory, setPingHistory] = useState<number[]>([]);
-  const [selectedSimIndex, setSelectedSimIndex] = useState(0);
-
-  // Accordion states
-  const [isSystemExpanded, setIsSystemExpanded] = useState(false);
-
-  const fadeAnims = React.useRef(Array.from({ length: 6 }, () => new Animated.Value(0))).current;
-  const slideAnims = React.useRef(Array.from({ length: 6 }, () => new Animated.Value(20))).current;
-
-  React.useEffect(() => {
-    const anims = fadeAnims.map((fade, idx) => {
-      return Animated.parallel([
-        Animated.timing(fade, {
-          toValue: 1,
-          duration: 500,
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnims[idx], {
-          toValue: 0,
-          duration: 500,
-          useNativeDriver: true,
-        }),
-      ]);
-    });
-    Animated.stagger(80, anims).start();
-  }, []);
-
-  const fetchDiagnostics = useCallback(async () => {
-    try {
-      const perms = await Location.getForegroundPermissionsAsync();
-      setPermissionGranted(perms.granted);
-
-      if (perms.granted && Platform.OS !== "web") {
-        setCellDetails(getCellularDetails());
-        setNetDetails(getNetworkDetails());
-        setWifiDetails(getConnectedWifiInfo());
-      }
-
-      // Hardware Telemetry
-      // Only network telemetry remaining
-    } catch (e) {
-      console.log("Diag error:", e);
-    }
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      fetchDiagnostics();
-    }, [fetchDiagnostics])
-  );
-
-  const checkPermission = async () => {
-    try {
-      const response = await Location.getForegroundPermissionsAsync();
-      const isFine = response.status === "granted" && response.android?.accuracy === "fine";
-      setPermissionGranted(isFine);
-      return isFine;
-    } catch {
-      setPermissionGranted(false);
-      return false;
-    }
-  };
-
-  const requestPermission = async () => {
-    try {
-      const response = await Location.requestForegroundPermissionsAsync();
-      const isFine = response.status === "granted" && response.android?.accuracy === "fine";
-      setPermissionGranted(isFine);
-      if (isFine) {
-        updateTelemetry();
-      } else if (response.status === "granted") {
-          Alert.alert(
-            "Precise Location Required",
-            "You enabled 'Approximate Location'. To read active bands and cellular towers, NetPilot needs 'Precise Location'.\n\nPlease enable it in Settings.",
-            [
-              { text: "Cancel", style: "cancel" },
-              { text: "Open Settings", onPress: () => Linking.openSettings() },
-            ]
-          );
-        } else {
-          Alert.alert(
-            "Permission Required",
-            "Location permission is required to read network hardware states and signal strengths."
-          );
-        }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const updateTelemetry = () => {
-    setIsRefreshing(true);
-    try {
-      const cell = getCellularDetails();
-      const net = getNetworkDetails();
-      const wifi = getConnectedWifiInfo();
-
-      setCellDetails(cell);
-      setNetDetails(net);
-      setWifiDetails(wifi);
-    } catch (error) {
-      console.error("Failed to retrieve native telemetry:", error);
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
-  useFocusEffect(
-    React.useCallback(() => {
-      const init = async () => {
-        const isFine = await checkPermission();
-        if (!isFine) {
-          const response = await Location.getForegroundPermissionsAsync();
-          if (response.status === "undetermined" || (response.status === "denied" && response.canAskAgain)) {
-            await requestPermission();
-          }
-        }
-      };
-
-      init();
-      updateTelemetry();
-
-      const interval = setInterval(() => {
-        updateTelemetry();
-      }, 2000);
-
-      return () => clearInterval(interval);
-    }, [])
-  );
-
-  useFocusEffect(
-    React.useCallback(() => {
-      let active = true;
-      const interval = setInterval(async () => {
-        const target = settings.customPingTarget.trim() !== "" ? settings.customPingTarget.trim() : "https://1.1.1.1";
-        const start = Date.now();
-        try {
-          await fetch(target, { method: "HEAD", mode: "no-cors" });
-          if (active) {
-            const ms = Date.now() - start;
-            setPingLatency(ms);
-            setPingHistory((prev) => {
-              const next = [...prev, ms];
-              if (next.length > 15) next.shift();
-              return next;
-            });
-          }
-        } catch {
-          if (active) setPingLatency(null);
-        }
-      }, 4000);
-
-      return () => {
-        active = false;
-        clearInterval(interval);
-      };
-    }, [settings.customPingTarget])
-  );
-
-  const getSignalQuality = (rsrp: number | null) => {
-    if (rsrp === null || rsrp === 0 || rsrp === 2147483647)
-      return { label: "No Signal", color: "text-slate-500", bg: "bg-slate-500/10", border: "border-slate-500/20" };
-    if (rsrp >= -85)
-      return {
-        label: "Excellent",
-        color: "text-emerald-400",
-        bg: "bg-emerald-500/15",
-        border: "border-emerald-500/30",
-      };
-    if (rsrp >= -100)
-      return { label: "Good", color: "text-teal-400", bg: "bg-teal-500/15", border: "border-teal-500/30" };
-    if (rsrp >= -115)
-      return { label: "Fair", color: "text-amber-400", bg: "bg-amber-500/15", border: "border-amber-500/30" };
-    return { label: "Poor", color: "text-rose-400", bg: "bg-rose-500/15", border: "border-rose-500/30" };
-  };
-
-  const getWifiSignalQuality = (level: number | null) => {
-    if (level === null)
-      return { label: "No Signal", color: "text-slate-500", bg: "bg-slate-500/10", border: "border-slate-500/20" };
-    if (level >= -55)
-      return {
-        label: "Excellent",
-        color: "text-emerald-400",
-        bg: "bg-emerald-500/15",
-        border: "border-emerald-500/30",
-      };
-    if (level >= -70)
-      return { label: "Good", color: "text-teal-400", bg: "bg-teal-500/15", border: "border-teal-500/30" };
-    if (level >= -85)
-      return { label: "Fair", color: "text-amber-400", bg: "bg-amber-500/15", border: "border-amber-500/30" };
-    return { label: "Poor", color: "text-rose-400", bg: "bg-rose-500/15", border: "border-rose-500/30" };
-  };
+  const {
+    settings,
+    permissionGranted,
+    cellDetails,
+    netDetails,
+    wifiDetails,
+    isRefreshing,
+    pingLatency,
+    pingHistory,
+    selectedSimIndex,
+    setSelectedSimIndex,
+    isSystemExpanded,
+    setIsSystemExpanded,
+    fadeAnims,
+    slideAnims,
+    updateTelemetry,
+    requestPermission,
+  } = useDashboardViewModel();
 
   const getOverallHealth = () => {
     const rsrp =
@@ -318,14 +125,7 @@ export default function DashboardScreen() {
     };
   };
 
-  const getLteIdentifiers = (cid: number | null) => {
-    if (!cid || cid === 2147483647) return { enodeb: "—", sector: "—" };
-    return { enodeb: Math.floor(cid / 256).toString(), sector: (cid % 256).toString() };
-  };
 
-  const activeSim = cellDetails && cellDetails.length > 0 ? cellDetails[selectedSimIndex] || cellDetails[0] : null;
-  const { enodeb, sector } = getLteIdentifiers(activeSim?.cid ?? null);
-  const wifiSignalQuality = getWifiSignalQuality(wifiDetails?.level ?? null);
   const overallHealth = getOverallHealth();
 
   const getSubnetMask = (prefix: number | null) => {
@@ -373,224 +173,21 @@ export default function DashboardScreen() {
         )}
 
         {wifiDetails?.ssid != null ? (
-          <Animated.View
-            style={{ transform: [{ translateY: slideAnims[1] }], opacity: fadeAnims[1] }}
-            className="bg-slate-900 border border-slate-800 rounded-3xl mb-5 shadow-lg relative overflow-hidden"
-          >
-            <View
-              className={`absolute top-0 right-0 w-24 h-24 rounded-full filter blur-3xl opacity-20 ${wifiDetails.level && wifiDetails.level >= -70 ? "bg-emerald-500" : "bg-amber-500"}`}
-            />
-
-            <View className="p-5">
-              <View className="flex-row justify-between items-center mb-4">
-                <View className="flex-row items-center gap-2">
-                  <Wifi size={20} color="#0ea5e9" />
-                  <Text className="text-lg font-bold text-slate-100">Wi-Fi Link</Text>
-                </View>
-                <View className={`${wifiSignalQuality.bg} ${wifiSignalQuality.border} border px-3 py-1 rounded-full`}>
-                  <Text className={`text-xs font-bold ${wifiSignalQuality.color}`}>{wifiSignalQuality.label}</Text>
-                </View>
-              </View>
-              <View className="flex-row items-baseline mb-4">
-                <Text className="text-5xl font-black text-slate-50">{wifiDetails.level ?? "—"}</Text>
-                {wifiDetails.level !== null && (
-                  <Text className="text-slate-400 font-semibold text-sm ml-1.5">dBm (RSSI)</Text>
-                )}
-              </View>
-              <View className="grid grid-cols-2 gap-4 flex-row flex-wrap border-t border-slate-800/80 pt-4">
-                <View className="w-[47%]">
-                  <Text className="text-slate-500 text-[10px] uppercase font-bold tracking-wider">SSID</Text>
-                  <Text className="text-slate-200 font-bold text-sm mt-0.5" numberOfLines={1}>
-                    {wifiDetails.ssid}
-                  </Text>
-                </View>
-                <View className="w-[47%]">
-                  <Text className="text-slate-500 text-[10px] uppercase font-bold tracking-wider">Link Speed</Text>
-                  <Text className="text-slate-200 font-bold text-sm mt-0.5">
-                    {wifiDetails.linkSpeed ? `${wifiDetails.linkSpeed} Mbps` : "—"}
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Merged Overall Health Banner */}
-            <View className={`p-4 border-t border-slate-800/80 ${overallHealth.bg} flex-row items-center gap-3.5`}>
-              <View className={`p-2 rounded-xl ${overallHealth.bg} border border-slate-800/50`}>
-                {overallHealth.icon === "gaming" ? (
-                  <Zap size={18} color="#10b981" />
-                ) : overallHealth.icon === "streaming" ? (
-                  <Activity size={18} color="#0ea5e9" />
-                ) : overallHealth.icon === "basic" ? (
-                  <Globe size={18} color="#f59e0b" />
-                ) : overallHealth.icon === "alert" ? (
-                  <AlertTriangle size={18} color="#ef4444" />
-                ) : (
-                  <Activity size={18} color="#94a3b8" />
-                )}
-              </View>
-              <View className="flex-1">
-                <Text className={`text-[10px] font-black uppercase tracking-widest ${overallHealth.color}`}>
-                  {overallHealth.label}
-                </Text>
-                <Text
-                  className={`text-[10px] font-semibold mt-0.5 ${overallHealth.icon === "alert" ? "text-rose-300" : "text-slate-400"}`}
-                >
-                  {overallHealth.desc}
-                </Text>
-              </View>
-            </View>
-          </Animated.View>
+          <WifiLinkCard
+            wifiDetails={wifiDetails}
+            overallHealth={overallHealth}
+            fadeAnim={fadeAnims[1]}
+            slideAnim={slideAnims[1]}
+          />
         ) : cellDetails && cellDetails.length > 0 ? (
-          <View>
-            {cellDetails.length > 1 && (
-              <View className="flex-row gap-3 mb-4">
-                {cellDetails.map((sim, index) => {
-                  const isSelected = selectedSimIndex === index;
-                  return (
-                    <TouchableOpacity
-                      key={`sim-${index}`}
-                      onPress={() => setSelectedSimIndex(index)}
-                      className={`will-change-variable flex-1 py-3 rounded-2xl items-center border ${
-                        isSelected ? "bg-slate-800 border-sky-500/50 shadow-md" : "bg-slate-900 border-slate-800/80"
-                      }`}
-                    >
-                      <Text
-                        className={`text-xs font-black uppercase tracking-wider ${isSelected ? "text-sky-400" : "text-slate-500"}`}
-                      >
-                        {sim.carrier || `SIM ${index + 1}`}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            )}
-            {(() => {
-              const sim = cellDetails[selectedSimIndex] || cellDetails[0];
-              const simSignal = getSignalQuality(sim.rsrp);
-              const actualIndex = cellDetails[selectedSimIndex] ? selectedSimIndex : 0;
-              return (
-                <Animated.View
-                  style={{ transform: [{ translateY: slideAnims[1] }], opacity: fadeAnims[1] }}
-                  className="bg-slate-900 border border-slate-800 rounded-3xl mb-5 shadow-lg relative overflow-hidden"
-                >
-                  <View
-                    className={`absolute top-0 right-0 w-24 h-24 rounded-full filter blur-3xl opacity-20 ${sim.rsrp ? (sim.rsrp >= -90 ? "bg-emerald-500" : "bg-amber-500") : "bg-slate-500"}`}
-                  />
-
-                  <View className="p-5">
-                    <View className="flex-row justify-between items-center mb-4">
-                      <View className="flex-row items-center gap-2">
-                        <Radio size={20} color="#0ea5e9" />
-                        <Text className="text-lg font-bold text-slate-100">
-                          {sim.carrier
-                            ? `${sim.carrier} ${sim.networkType !== "Unknown" && sim.networkType ? sim.networkType : "Network"}`
-                            : `SIM ${actualIndex + 1} Network`}
-                        </Text>
-                      </View>
-                      <View className={`${simSignal.bg} ${simSignal.border} border px-3 py-1 rounded-full`}>
-                        <Text className={`text-xs font-bold ${simSignal.color}`}>{simSignal.label}</Text>
-                      </View>
-                    </View>
-
-                    <View className="flex-row items-baseline mb-4">
-                      <Text className="text-5xl font-black text-slate-50">{sim.rsrp ?? "—"}</Text>
-                      {sim.rsrp !== null && (
-                        <Text className="text-slate-400 font-semibold text-sm ml-1.5">dBm (RSRP)</Text>
-                      )}
-                    </View>
-
-                    <View className="grid grid-cols-2 gap-4 flex-row flex-wrap border-t border-slate-800/80 pt-4">
-                      <View className="w-[47%]">
-                        <Text className="text-slate-500 text-[10px] uppercase font-bold tracking-wider">Carrier</Text>
-                        <Text className="text-slate-200 font-bold text-sm mt-0.5">{sim.carrier || "Unknown"}</Text>
-                      </View>
-                      <View className="w-[47%]">
-                        <Text className="text-slate-500 text-[10px] uppercase font-bold tracking-wider">
-                          Network Type
-                        </Text>
-                        <Text className="text-slate-200 font-bold text-sm mt-0.5">{sim.networkType || "None"}</Text>
-                      </View>
-                      <View className="w-[47%]">
-                        <Text className="text-slate-500 text-[10px] uppercase font-bold tracking-wider">
-                          Active Band
-                        </Text>
-                        <Text className="text-slate-200 font-bold text-sm mt-0.5">
-                          {sim.band ? `Band ${sim.band}` : "—"}
-                        </Text>
-                      </View>
-                      <View className="w-[47%]">
-                        <Text className="text-slate-500 text-[10px] uppercase font-bold tracking-wider">SINR</Text>
-                        <Text className="text-slate-200 font-bold text-sm mt-0.5">
-                          {sim.sinr != null && sim.sinr !== 2147483647 ? `${sim.sinr} dB` : "—"}
-                        </Text>
-                      </View>
-                      <View className="w-[47%] mt-2">
-                        <Text className="text-slate-500 text-[10px] uppercase font-bold tracking-wider">RSRQ</Text>
-                        <Text className="text-slate-200 font-bold text-sm mt-0.5">
-                          {sim.rsrq != null && sim.rsrq !== 2147483647 ? `${sim.rsrq} dB` : "—"}
-                        </Text>
-                      </View>
-                      <View className="w-[47%] mt-2">
-                        <Text className="text-slate-500 text-[10px] uppercase font-bold tracking-wider">RSSI</Text>
-                        <Text className="text-slate-200 font-bold text-sm mt-0.5">
-                          {sim.rssi != null && sim.rssi !== 2147483647 ? `${sim.rssi} dBm` : "—"}
-                        </Text>
-                      </View>
-                      <View className="w-[47%] mt-2">
-                        <Text className="text-slate-500 text-[10px] uppercase font-bold tracking-wider">eNodeB ID</Text>
-                        <Text className="text-slate-200 font-bold text-sm mt-0.5">{enodeb}</Text>
-                      </View>
-                      <View className="w-[47%] mt-2">
-                        <Text className="text-slate-500 text-[10px] uppercase font-bold tracking-wider">Sector</Text>
-                        <Text className="text-slate-200 font-bold text-sm mt-0.5">{sector}</Text>
-                      </View>
-                      <View className="w-[47%] mt-2">
-                        <Text className="text-slate-500 text-[10px] uppercase font-bold tracking-wider">PCI</Text>
-                        <Text className="text-slate-200 font-bold text-sm mt-0.5">
-                          {sim.pci != null && sim.pci !== 2147483647 ? sim.pci : "—"}
-                        </Text>
-                      </View>
-                      <View className="w-[47%] mt-2">
-                        <Text className="text-slate-500 text-[10px] uppercase font-bold tracking-wider">TAC</Text>
-                        <Text className="text-slate-200 font-bold text-sm mt-0.5">
-                          {sim.tac != null && sim.tac !== 2147483647 ? sim.tac : "—"}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-
-                  {/* Merged Overall Health Banner */}
-                  <View
-                    className={`p-4 border-t border-slate-800/80 ${overallHealth.bg} flex-row items-center gap-3.5`}
-                  >
-                    <View className={`p-2 rounded-xl ${overallHealth.bg} border border-slate-800/50`}>
-                      {overallHealth.icon === "gaming" ? (
-                        <Zap size={18} color="#10b981" />
-                      ) : overallHealth.icon === "streaming" ? (
-                        <Activity size={18} color="#0ea5e9" />
-                      ) : overallHealth.icon === "basic" ? (
-                        <Globe size={18} color="#f59e0b" />
-                      ) : overallHealth.icon === "alert" ? (
-                        <AlertTriangle size={18} color="#ef4444" />
-                      ) : (
-                        <Activity size={18} color="#94a3b8" />
-                      )}
-                    </View>
-                    <View className="flex-1">
-                      <Text className={`text-[10px] font-black uppercase tracking-widest ${overallHealth.color}`}>
-                        {overallHealth.label}
-                      </Text>
-                      <Text
-                        className={`text-[10px] font-semibold mt-0.5 ${overallHealth.icon === "alert" ? "text-rose-300" : "text-slate-400"}`}
-                      >
-                        {overallHealth.desc}
-                      </Text>
-                    </View>
-                  </View>
-                </Animated.View>
-              );
-            })()}
-          </View>
+          <CellularLinkCard
+            cellDetails={cellDetails}
+            selectedSimIndex={selectedSimIndex}
+            setSelectedSimIndex={setSelectedSimIndex}
+            overallHealth={overallHealth}
+            fadeAnim={fadeAnims[1]}
+            slideAnim={slideAnims[1]}
+          />
         ) : (
           <Animated.View
             style={{ transform: [{ translateY: slideAnims[1] }], opacity: fadeAnims[1] }}

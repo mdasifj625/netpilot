@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, ScrollView, TouchableOpacity } from "react-native";
+import { View, Text, ScrollView } from "react-native";
 import { Info, Shield, Zap } from "lucide-react-native";
 import pkg from "../../package.json";
 
