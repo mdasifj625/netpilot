@@ -32,20 +32,59 @@ class LanScannerModule : Module() {
                 return@Function true
             }
 
-            Function("scanDevicePorts") { ip: String ->
+            AsyncFunction("scanDevicePorts") { ip: String ->
                 val openPorts = mutableListOf<Int>()
-                val ports = listOf(22, 53, 80, 443, 8080)
+                val ports =
+                    listOf(
+                        21,
+                        22,
+                        23,
+                        25,
+                        53,
+                        80,
+                        111,
+                        139,
+                        443,
+                        445,
+                        631,
+                        3306,
+                        3389,
+                        5000,
+                        5432,
+                        5555,
+                        6379,
+                        8000,
+                        8080,
+                        8081,
+                        8443,
+                        27017,
+                    )
+
+                // Use a smaller thread pool (4) to avoid triggering router Intrusion Detection Systems (IDS)
+                val threadPool = Executors.newFixedThreadPool(4)
+                val latch = java.util.concurrent.CountDownLatch(ports.size)
+
                 for (port in ports) {
-                    try {
-                        val socket = java.net.Socket()
-                        socket.connect(java.net.InetSocketAddress(ip, port), 250)
-                        socket.close()
-                        openPorts.add(port)
-                    } catch (e: Exception) {
-                        // Closed
+                    threadPool.execute {
+                        try {
+                            val socket = java.net.Socket()
+                            socket.connect(java.net.InetSocketAddress(ip, port), 800) // 800ms timeout for better accuracy
+                            socket.close()
+                            synchronized(openPorts) {
+                                openPorts.add(port)
+                            }
+                        } catch (e: Exception) {
+                            // Closed or timeout
+                        } finally {
+                            latch.countDown()
+                        }
                     }
                 }
-                return@Function openPorts
+
+                latch.await(20, TimeUnit.SECONDS)
+                threadPool.shutdown()
+
+                return@AsyncFunction openPorts.sorted()
             }
         }
 

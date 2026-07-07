@@ -38,6 +38,13 @@ NetPilot is built on a hybrid architecture combining React Native Expo (SDK 57) 
    yarn android
    ```
 
+## Release Pipeline & CI/CD
+
+NetPilot uses GitHub Actions to automate its release pipeline. 
+- The `.github/workflows/release.yml` workflow triggers on `v*` tags.
+- It dynamically reads the app version from `package.json`.
+- It uses the custom `plugins/withAbiSplits.js` to patch Android's `build.gradle` to compile **5 specific APKs** (Universal, `armeabi-v7a`, `arm64-v8a`, `x86`, `x86_64`) to minimize individual download sizes.
+
 ## Modifying Native Modules
 
 NetPilot uses custom local Kotlin modules inside the `/modules/` directory mapped via the Expo Modules API.

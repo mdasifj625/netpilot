@@ -7,7 +7,6 @@ import android.app.Service
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.database.sqlite.SQLiteDatabase
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -16,7 +15,6 @@ import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
-import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
@@ -42,7 +40,6 @@ class BackgroundService :
     private var lastLoggedRsrp: Int? = null
     private var lastLoggedLocation: Location? = null
     private var lastLoggedNetworkType: String? = null
-    private var isBatteryTrackingPaused = false
 
     private var currentLocation: Location? = null
     private var locationManager: LocationManager? = null
@@ -254,14 +251,6 @@ class BackgroundService :
             val signalLabel = if (rsrp != null && rsrp != 2147483647) "$rsrp dBm" else "No Signal"
             updateNotification("Connected to $networkType", signalLabel)
 
-            // Evaluate active background rules
-            evaluateAutomationRules(rsrp)
-
-            if (isBatteryTrackingPaused) {
-                updateNotification("Paused (Low Battery)", "Tracking Suspended")
-                return
-            }
-
             // Evaluate Adaptive thresholds
             var shouldLog = false
 
@@ -297,102 +286,6 @@ class BackgroundService :
             }
         } catch (e: Exception) {
             e.printStackTrace()
-        }
-    }
-
-    private fun getBatteryLevel(): Int {
-        try {
-            val batteryStatus = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-            if (batteryStatus != null) {
-                val level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
-                val scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
-                if (level >= 0 && scale > 0) {
-                    return (level * 100) / scale
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        return -1
-    }
-
-    private fun evaluateAutomationRules(rsrp: Int?) {
-        val db = database ?: return
-        isBatteryTrackingPaused = false
-        try {
-            // Query SQLite for active automation rules
-            val cursor =
-                db.rawQuery(
-                    "SELECT trigger_type, operator, value, action_type, name FROM automation_rules WHERE is_active = 1",
-                    null,
-                )
-
-            while (cursor.moveToNext()) {
-                val triggerType = cursor.getString(0)
-                val operator = cursor.getString(1)
-                val thresholdStr = cursor.getString(2)
-                val actionType = cursor.getString(3)
-                val name = cursor.getString(4)
-
-                val threshold = thresholdStr.toDoubleOrNull() ?: continue
-                var isTriggered = false
-
-                if (triggerType == "signal") {
-                    if (rsrp != null && rsrp != 2147483647) {
-                        isTriggered =
-                            when (operator) {
-                                "lt" -> rsrp < threshold
-                                "gt" -> rsrp > threshold
-                                "eq" -> rsrp == threshold.toInt()
-                                else -> false
-                            }
-                    }
-                } else if (triggerType == "battery") {
-                    val batteryLevel = getBatteryLevel()
-                    if (batteryLevel >= 0) {
-                        isTriggered =
-                            when (operator) {
-                                "lt" -> batteryLevel < threshold
-                                "gt" -> batteryLevel > threshold
-                                "eq" -> batteryLevel == threshold.toInt()
-                                else -> false
-                            }
-                    }
-                }
-
-                if (isTriggered) {
-                    if (triggerType == "battery" && (actionType == "pause" || actionType == "pause_tracking")) {
-                        isBatteryTrackingPaused = true
-                    } else {
-                        triggerRuleAction(name, triggerType, threshold, actionType)
-                    }
-                }
-            }
-            cursor.close()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun triggerRuleAction(
-        ruleName: String,
-        triggerType: String,
-        threshold: Double,
-        actionType: String,
-    ) {
-        if (actionType == "notification" || actionType == "alert_sound") {
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            val ruleNotification =
-                NotificationCompat
-                    .Builder(this, CHANNEL_ID)
-                    .setContentTitle("NetPilot Rule Triggered")
-                    .setContentText("Rule '$ruleName' fired: $triggerType threshold breached!")
-                    .setSmallIcon(android.R.drawable.ic_dialog_alert)
-                    .setPriority(NotificationCompat.PRIORITY_HIGH)
-                    .setAutoCancel(true)
-                    .build()
-
-            notificationManager.notify(ruleName.hashCode(), ruleNotification)
         }
     }
 

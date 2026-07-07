@@ -15,6 +15,17 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen 
+            name="about" 
+            options={{ 
+              headerShown: true,
+              presentation: "modal", 
+              headerTitle: "About NetPilot", 
+              headerStyle: { backgroundColor: "#0f172a" }, 
+              headerTintColor: "#f8fafc",
+              headerTitleStyle: { fontWeight: "bold" }
+            }} 
+          />
         </Stack>
       </QueryClientProvider>
     </GestureHandlerRootView>

@@ -13,17 +13,5 @@ export const networkHistory = sqliteTable("network_history", {
   longitude: real("longitude"),
 });
 
-export const automationRules = sqliteTable("automation_rules", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  name: text("name").notNull(),
-  triggerType: text("trigger_type").notNull(), // signal, speed, battery
-  operator: text("operator").notNull(), // lt, gt, eq
-  value: text("value").notNull(), // Threshold value
-  actionType: text("action_type").notNull(), // notification, alert_sound, log
-  isActive: integer("is_active", { mode: "boolean" }).default(true),
-});
-
 export type NetworkHistoryInsert = typeof networkHistory.$inferInsert;
 export type NetworkHistorySelect = typeof networkHistory.$inferSelect;
-export type AutomationRuleInsert = typeof automationRules.$inferInsert;
-export type AutomationRuleSelect = typeof automationRules.$inferSelect;

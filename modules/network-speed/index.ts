@@ -174,7 +174,7 @@ async function runJsFallbackSpeedTest(downloadUrl: string) {
 
       const elapsed = Date.now() - dlStartTime;
       const progress = Math.min(1, elapsed / dlDuration);
-      
+
       // Real-time speed starts small, sweeps up, and fluctuates at peak
       const currentSpeed = peakDlSpeed * (0.3 + 0.7 * Math.sin(progress * Math.PI / 2)) + (Math.random() * 6 - 3);
 
@@ -214,7 +214,7 @@ async function runJsFallbackSpeedTest(downloadUrl: string) {
 
         const elapsed = Date.now() - ulStartTime;
         const progress = Math.min(1, elapsed / ulDuration);
-        
+
         const currentSpeed = peakUlSpeed * (0.2 + 0.8 * Math.sin(progress * Math.PI / 2)) + (Math.random() * 3 - 1.5);
 
         fallbackListeners.progress.forEach(cb => cb({

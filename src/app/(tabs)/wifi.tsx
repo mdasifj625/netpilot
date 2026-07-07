@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { View, Text, ScrollView, TouchableOpacity, FlatList, ActivityIndicator, Alert, Linking } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import Svg, { Polyline } from "react-native-svg";
+
 import { useFocusEffect } from "expo-router";
 import * as Location from "expo-location";
 import { resolveMacVendor } from "../../utils/macVendors";
@@ -20,6 +21,10 @@ import {
   Tablet,
   Tv,
   AlertTriangle,
+  Lock,
+  Unlock,
+  Shield,
+  ShieldAlert,
 } from "lucide-react-native";
 
 // Import custom native modules
@@ -54,6 +59,15 @@ export default function WifiScreen() {
   const [selectedIp, setSelectedIp] = useState<string | null>(null);
   const [openPorts, setOpenPorts] = useState<number[]>([]);
   const [isScanningPorts, setIsScanningPorts] = useState(false);
+  const [signalHistory, setSignalHistory] = useState<number[]>([]);
+
+  const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const stopPolling = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  }, []);
 
   const handleDevicePress = async (ip: string) => {
     if (selectedIp === ip) {
@@ -124,14 +138,27 @@ export default function WifiScreen() {
       const results = getScanResults();
 
       setConnectedInfo(connected);
+      if (connected && connected.level !== null) {
+        setSignalHistory(prev => {
+          const next = [...prev, connected.level as number];
+          if (next.length > 30) next.shift(); // Keep last 30 samples (~2.5 mins if polling every 5s)
+          return next;
+        });
+      }
+
       // Sort results by signal level descending
-      setScanResults(results.sort((a, b) => b.level - a.level));
+      setScanResults([...results].sort((a, b) => b.level - a.level));
+
+      // Discard infinite search if absolutely no wifi is found
+      if (results.length === 0) {
+        stopPolling();
+      }
     } catch (e) {
       console.error("Failed to query WiFi metrics:", e);
     } finally {
       setIsWifiScanning(false);
     }
-  }, []);
+  }, [stopPolling]);
 
   const checkPermission = useCallback(async () => {
     try {
@@ -189,17 +216,19 @@ export default function WifiScreen() {
 
       init();
       updateWifiData();
-      const interval = setInterval(() => {
+
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      intervalRef.current = setInterval(() => {
         if (!isLanScanning) {
           updateWifiData();
         }
       }, 5000);
 
       return () => {
-        clearInterval(interval);
+        stopPolling();
         stopLanScan();
       };
-    }, [isLanScanning, checkPermission, requestPermission, updateWifiData])
+    }, [isLanScanning, checkPermission, requestPermission, updateWifiData, stopPolling])
   );
 
   // Set up LAN Scanner listeners
@@ -271,7 +300,7 @@ export default function WifiScreen() {
         }
       });
 
-      const ranked = channels5G.sort((a, b) => congestion5G[a] - congestion5G[b]);
+      const ranked = [...channels5G].sort((a, b) => congestion5G[a] - congestion5G[b]);
       return {
         band: "5 GHz",
         recommended: ranked[0],
@@ -291,7 +320,7 @@ export default function WifiScreen() {
         }
       });
 
-      const sorted2G = channels2G.sort((a, b) => congestion2G[a] - congestion2G[b]);
+      const sorted2G = [...channels2G].sort((a, b) => congestion2G[a] - congestion2G[b]);
       return {
         band: "2.4 GHz",
         recommended: sorted2G[0],
@@ -303,12 +332,75 @@ export default function WifiScreen() {
 
   const channelInfo = getChannelRecommendations();
 
+  const renderPortAudit = () => {
+    if (isScanningPorts) {
+      return (
+        <View className="flex-row items-center gap-2 my-2">
+          <ActivityIndicator size="small" color="#0ea5e9" />
+          <Text className="text-slate-500 text-[10px]">Probing ports in parallel...</Text>
+        </View>
+      );
+    }
+
+    if (openPorts.length > 0) {
+      return (
+        <View className="flex-row flex-wrap gap-2 mt-1">
+          {openPorts.map((port) => {
+            const portNames: Record<number, string> = {
+              21: "FTP",
+              22: "SSH",
+              23: "Telnet",
+              25: "SMTP",
+              53: "DNS",
+              80: "HTTP",
+              111: "RPC",
+              139: "NetBIOS",
+              443: "HTTPS",
+              445: "SMB",
+              631: "IPP/Print",
+              3306: "MySQL",
+              3389: "RDP",
+              5000: "UPnP",
+              5432: "PostgreSQL",
+              5555: "Android ADB",
+              6379: "Redis",
+              8000: "Dev Web",
+              8080: "Web Alt",
+              8081: "Metro Bundler",
+              8443: "HTTPS Alt",
+              27017: "MongoDB",
+            };
+            return (
+              <View
+                key={port}
+                className="px-3 py-1.5 rounded-xl border flex-row items-center gap-1.5 bg-emerald-500/10 border-emerald-500/25"
+              >
+                <View className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <Text className="font-bold text-[9px] uppercase tracking-wider text-emerald-400">
+                  {port} • {portNames[port] || "Open"}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      );
+    }
+
+    return (
+      <View className="bg-slate-900 border border-slate-800 rounded-xl p-3 items-center mt-1">
+        <Shield size={16} color="#10b981" className="mb-1.5" />
+        <Text className="text-slate-400 font-semibold text-[10px]">No common ports open (Secure)</Text>
+      </View>
+    );
+  };
+
   return (
-    <SafeAreaView edges={["bottom"]} style={{ flex: 1, backgroundColor: "#020617" }} className="flex-1 bg-slate-950">
-      {/* Precise Location Explainer Card */}
-      {permissionGranted === false && (
+    <View style={{ flex: 1, backgroundColor: "transparent" }} className="flex-1">
+      <View style={{ flex: 1 }}>
+        {/* Precise Location Explainer Card */}
+        {permissionGranted === false && (
         <View
-          className="bg-slate-900 border border-amber-500/35 rounded-3xl p-5 mx-4 mt-4 shadow-lg"
+          className="bg-slate-900 border border-amber-500/35 rounded-3xl p-5 mx-4 mt-6 shadow-lg"
           style={{ gap: 12 }}
         >
           <View className="flex-row items-center gap-2.5">
@@ -329,7 +421,7 @@ export default function WifiScreen() {
       )}
 
       {/* Sub Tabs Toggle */}
-      <View className="flex-row mx-4 mt-4 bg-slate-900 border border-slate-800 rounded-xl p-1">
+      <View className={`flex-row mx-4 bg-slate-900 border border-slate-800 rounded-xl p-1 ${permissionGranted === false ? "mt-4" : "mt-6"}`}>
         <TouchableOpacity
           onPress={() => setActiveTab("wifi")}
           className={`flex-1 flex-row items-center justify-center py-2.5 rounded-lg gap-2 ${activeTab === "wifi" ? "bg-sky-500" : "bg-transparent"}`}
@@ -408,6 +500,31 @@ export default function WifiScreen() {
                       }`}
                     />
                   </View>
+
+                  {/* Sweet Spot Graph */}
+                  {signalHistory.length > 2 && (
+                    <View className="mt-4 border-t border-slate-800/40 pt-3">
+                      <Text className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Signal Sweet Spot Finder</Text>
+                      <View className="h-12 bg-slate-950 rounded-xl overflow-hidden justify-end">
+                        <Svg width="100%" height="100%" preserveAspectRatio="none">
+                          <Polyline
+                            points={signalHistory.map((val, idx) => {
+                              const x = (idx / (Math.max(30, signalHistory.length) - 1)) * 300; // approximate width scale
+                              const normalized = Math.max(0, Math.min(100, (val + 100) * 1.66));
+                              const y = 48 - (normalized / 100) * 48;
+                              return `${x},${y}`;
+                            }).join(" ")}
+                            fill="none"
+                            stroke={connectedInfo.level >= -55 ? "#10b981" : connectedInfo.level >= -70 ? "#2dd4bf" : connectedInfo.level >= -85 ? "#fbbf24" : "#f43f5e"}
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </Svg>
+                      </View>
+                      <Text className="text-[9px] text-slate-500 mt-1.5 text-center italic">Walk around to find the best signal peak.</Text>
+                    </View>
+                  )}
                 </View>
               )}
 
@@ -417,6 +534,21 @@ export default function WifiScreen() {
                   <Text className="text-slate-200 text-xs font-bold">{connectedInfo.ssid}</Text>
                 </View>
                 <View className="flex-row justify-between">
+                  <Text className="text-slate-500 text-xs font-semibold">Security</Text>
+                  <View className="flex-row items-center gap-1.5">
+                    {(() => {
+                      const connectedAp = scanResults.find(r => r.bssid === connectedInfo.bssid);
+                      const isSecure = connectedAp ? !connectedAp.capabilities.toLowerCase().includes("none") && !connectedAp.capabilities.toLowerCase().includes("open") : true;
+                      return (
+                        <>
+                          {isSecure ? <Shield size={12} color="#10b981" /> : <ShieldAlert size={12} color="#f43f5e" />}
+                          <Text className={`text-xs font-bold ${isSecure ? "text-emerald-400" : "text-rose-400"}`}>{isSecure ? "Secured Network" : "Open Network (Insecure)"}</Text>
+                        </>
+                      );
+                    })()}
+                  </View>
+                </View>
+                <View className="flex-row justify-between">
                   <Text className="text-slate-500 text-xs font-semibold">Frequency</Text>
                   <Text className="text-slate-200 text-xs font-semibold">{connectedInfo.frequency} MHz</Text>
                 </View>
@@ -424,7 +556,7 @@ export default function WifiScreen() {
                   <Text className="text-slate-500 text-xs font-semibold">Link Speed</Text>
                   <Text className="text-slate-200 text-xs font-bold">{connectedInfo.linkSpeed} Mbps</Text>
                 </View>
-                {connectedInfo.bssid && resolveMacVendor(connectedInfo.bssid) && (
+                {!!(connectedInfo.bssid) && !!(resolveMacVendor(connectedInfo.bssid)) && (
                   <View className="flex-row justify-between">
                     <Text className="text-slate-500 text-xs font-semibold">Manufacturer</Text>
                     <Text className="text-slate-200 text-xs font-bold">{resolveMacVendor(connectedInfo.bssid)}</Text>
@@ -497,45 +629,64 @@ export default function WifiScreen() {
 
           {scanResults.length > 0 ? (
             <View style={{ gap: 12 }}>
-              {scanResults.map((item) => (
-                <View
-                  key={item.bssid}
-                  className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex-row items-center justify-between shadow-md"
-                >
-                  <View className="flex-1 pr-3">
-                    <Text className="text-slate-200 font-bold text-sm" numberOfLines={1}>
-                      {item.ssid || "Hidden Network"}
-                    </Text>
-                    <View className="flex-row gap-2 mt-1 items-center flex-wrap">
-                      <Text className="text-slate-500 font-mono text-[10px]">{item.bssid}</Text>
-                      <Text className="text-slate-500 text-[10px]">•</Text>
-                      <Text className="text-sky-500 font-bold text-[10px]">Ch {item.channel}</Text>
-                      <Text className="text-slate-500 text-[10px]">•</Text>
-                      <Text className="text-slate-400 font-medium text-[10px]">{item.wifiStandard}</Text>
-                    </View>
-                  </View>
+              {scanResults.map((item) => {
+                const isOpen = item.capabilities.toLowerCase().includes("none") || item.capabilities.toLowerCase().includes("open");
+                return (
+                  <View
+                    key={item.bssid}
+                    className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md"
+                  >
+                    <View className="flex-row items-center justify-between">
+                      <View className="flex-1 pr-3">
+                        <View className="flex-row items-center gap-2 mb-0.5">
+                          {isOpen ? <Unlock size={14} color="#f43f5e" /> : <Lock size={14} color="#10b981" />}
+                          <Text className="text-slate-200 font-bold text-sm" numberOfLines={1}>
+                            {item.ssid || "Hidden Network"}
+                          </Text>
+                        </View>
+                        <Text className="text-slate-500 font-mono text-[10px] mt-0.5 mb-1.5">{item.bssid}</Text>
+                        <View className="flex-row gap-2 items-center flex-wrap">
+                          <Text className="text-sky-500 font-bold text-[10px] px-1.5 py-0.5 bg-sky-500/10 rounded-md">Ch {item.channel}</Text>
+                          <Text className="text-indigo-400 font-semibold text-[10px] px-1.5 py-0.5 bg-indigo-500/10 rounded-md">{item.wifiStandard}</Text>
+                          <Text className={`font-bold text-[10px] px-1.5 py-0.5 rounded-md ${isOpen ? "bg-rose-500/10 text-rose-400" : "bg-emerald-500/10 text-emerald-400"}`}>{isOpen ? "Open" : "Secured"}</Text>
+                        </View>
+                      </View>
 
-                  <View className="items-end gap-1">
-                    <View className="flex-row items-center gap-1">
-                      <Signal
-                        size={12}
-                        color={item.level >= -70 ? "#10b981" : item.level >= -85 ? "#f59e0b" : "#f43f5e"}
-                      />
-                      <Text
-                        className={`font-black text-xs ${item.level >= -70 ? "text-emerald-400" : item.level >= -85 ? "text-amber-400" : "text-rose-400"}`}
-                      >
-                        {item.level} dBm
-                      </Text>
+                      <View className="items-end justify-center">
+                        <View className="flex-row items-center gap-1.5 mb-1">
+                          <Signal
+                            size={14}
+                            color={item.level >= -70 ? "#10b981" : item.level >= -85 ? "#f59e0b" : "#f43f5e"}
+                          />
+                          <Text
+                            className={`font-black text-sm ${item.level >= -70 ? "text-emerald-400" : item.level >= -85 ? "text-amber-400" : "text-rose-400"}`}
+                          >
+                            {item.level}
+                          </Text>
+                        </View>
+                        <Text className="text-slate-500 text-[10px] font-semibold">{item.frequency} MHz</Text>
+                      </View>
                     </View>
-                    <Text className="text-slate-500 text-[9px] font-semibold">{item.frequency} MHz</Text>
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
           ) : (
             <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 mb-5 items-center justify-center py-12">
-              <ActivityIndicator size="small" color="#0ea5e9" className="mb-3" />
-              <Text className="text-slate-400 text-xs">Scanning surrounding WiFi access points...</Text>
+              {isWifiScanning ? (
+                <>
+                  <ActivityIndicator size="small" color="#0ea5e9" className="mb-3" />
+                  <Text className="text-slate-400 text-xs">Scanning surrounding WiFi access points...</Text>
+                </>
+              ) : (
+                <>
+                  <Wifi size={32} color="#475569" className="mb-3" />
+                  <Text className="text-slate-400 font-semibold text-sm">No Networks Found</Text>
+                  <Text className="text-slate-500 text-xs text-center mt-1 max-w-[240px]">
+                    Tap the Scan button above to search for nearby access points manually.
+                  </Text>
+                </>
+              )}
             </View>
           )}
         </ScrollView>
@@ -609,43 +760,9 @@ export default function WifiScreen() {
                     {isSelected && (
                       <View className="mt-4 pt-3.5 border-t border-slate-800/60" style={{ gap: 8 }}>
                         <Text className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                          Common Port Audit
+                          Deep Port Audit (20 Common Services)
                         </Text>
-                        {isScanningPorts ? (
-                          <ActivityIndicator size="small" color="#0ea5e9" className="my-1.5" />
-                        ) : (
-                          <View className="flex-row flex-wrap gap-2 mt-1">
-                            {[22, 53, 80, 443, 8080].map((port) => {
-                              const isOpen = openPorts.includes(port);
-                              const portNames: Record<number, string> = {
-                                22: "SSH",
-                                53: "DNS",
-                                80: "HTTP",
-                                443: "HTTPS",
-                                8080: "Web Alt",
-                              };
-                              return (
-                                <View
-                                  key={port}
-                                  className={`px-3 py-1.5 rounded-xl border flex-row items-center gap-1.5 ${
-                                    isOpen
-                                      ? "bg-emerald-500/10 border-emerald-500/25"
-                                      : "bg-slate-950/40 border-slate-800/60 opacity-60"
-                                  }`}
-                                >
-                                  <View
-                                    className={`w-1.5 h-1.5 rounded-full ${isOpen ? "bg-emerald-400" : "bg-slate-600"}`}
-                                  />
-                                  <Text
-                                    className={`font-bold text-[9px] uppercase tracking-wider ${isOpen ? "text-emerald-400" : "text-slate-500"}`}
-                                  >
-                                    {port} • {portNames[port]}
-                                  </Text>
-                                </View>
-                              );
-                            })}
-                          </View>
-                        )}
+                        {renderPortAudit()}
                       </View>
                     )}
                   </TouchableOpacity>
@@ -663,6 +780,7 @@ export default function WifiScreen() {
           )}
         </View>
       )}
-    </SafeAreaView>
+      </View>
+    </View>
   );
 }

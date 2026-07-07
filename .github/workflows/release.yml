@@ -1,64 +1,119 @@
-name: Build and Release Android APK
+name: Build & Release NetPilot APKs
 
 on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_NAME: NetPilot
+  NODE_VERSION: "22"
+  JAVA_VERSION: "17"
+  GRADLE_OPTS: >-
+    -Dorg.gradle.daemon=false
+    -Dorg.gradle.jvmargs="-Xmx4g"
+
 jobs:
   build:
-    name: Build APK and Release
+    name: Build Release APKs
     runs-on: ubuntu-latest
+    timeout-minutes: 40
 
     steps:
-      - name: Checkout code
+      - name: Checkout Repository
         uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: yarn
 
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: yarn
 
-      - name: Install JavaScript dependencies
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Extract App Version
+        run: |
+          echo "VERSION=$(node -p "require('./package.json').version")" >> "$GITHUB_ENV"
+
+      - name: Install Dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Run Linting
-        run: yarn lint
-
-      - name: Prebuild Native Android Code
+      - name: Generate Native Android Project
         run: npx expo prebuild --platform android --no-install
 
-      - name: Build Android Release APK
-        working-directory: ./android
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      - name: Make Gradle Executable
+        run: chmod +x android/gradlew
+
+      - name: Build Release APKs
+        working-directory: android
         run: ./gradlew assembleRelease
 
-      - name: Extract Version and Rename APK
-        id: rename_apk
+      - name: Organize APKs
+        shell: bash
         run: |
-          VERSION=$(jq -r '.expo.version' app.json)
-          mv android/app/build/outputs/apk/release/app-release.apk android/app/build/outputs/apk/release/NetPilot-${VERSION}.apk
-          echo "APK_PATH=android/app/build/outputs/apk/release/NetPilot-${VERSION}.apk" >> $GITHUB_ENV
+          set -euo pipefail
 
-      - name: Create Release and Upload APK
-        uses: softprops/action-gh-release@v3
+          OUTPUT="android/app/build/outputs/apk/release"
+          DEST="release-apks"
+
+          mkdir -p "$DEST"
+
+          if [[ -f "$OUTPUT/app-universal-release.apk" ]]; then
+            cp "$OUTPUT/app-universal-release.apk" \
+              "$DEST/${APP_NAME}-${VERSION}.apk"
+          elif [[ -f "$OUTPUT/app-release.apk" ]]; then
+            cp "$OUTPUT/app-release.apk" \
+              "$DEST/${APP_NAME}-${VERSION}.apk"
+          fi
+
+          [[ -f "$OUTPUT/app-armeabi-v7a-release.apk" ]] && \
+            cp "$OUTPUT/app-armeabi-v7a-release.apk" \
+            "$DEST/${APP_NAME}-armeabi-v7a-${VERSION}.apk"
+
+          [[ -f "$OUTPUT/app-arm64-v8a-release.apk" ]] && \
+            cp "$OUTPUT/app-arm64-v8a-release.apk" \
+            "$DEST/${APP_NAME}-arm64-v8a-${VERSION}.apk"
+
+          [[ -f "$OUTPUT/app-x86-release.apk" ]] && \
+            cp "$OUTPUT/app-x86-release.apk" \
+            "$DEST/${APP_NAME}-x86-${VERSION}.apk"
+
+          [[ -f "$OUTPUT/app-x86_64-release.apk" ]] && \
+            cp "$OUTPUT/app-x86_64-release.apk" \
+            "$DEST/${APP_NAME}-x86_64-${VERSION}.apk"
+
+          ls -lah "$DEST"
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
         with:
-          files: ${{ env.APK_PATH }}
+          name: release-apks
+          path: release-apks/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-apks/*.apk
           generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { View, Text, ScrollView, TouchableOpacity, Alert, Platform, Animated } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { View, Text, ScrollView, TouchableOpacity, Alert, Platform, Animated, Switch } from "react-native";
+
 import { useFocusEffect } from "expo-router";
 import { desc, isNotNull } from "drizzle-orm";
-import { ArrowDown, ArrowUp, Clock, Zap } from "lucide-react-native";
+import { ArrowDown, ArrowUp, Clock, Zap, Settings, ChevronDown, ChevronUp } from "lucide-react-native";
 
 // Import custom native modules and DB
 import {
@@ -18,7 +18,7 @@ import { getCellularDetails } from "../../../modules/cellular-diagnostics";
 import { db } from "../../database/db";
 import { networkHistory } from "../../database/schema";
 import { useAppStore } from "../../store/useAppStore";
-import Svg, { Path, Circle, Line, Text as SvgText, Defs, LinearGradient, Stop } from "react-native-svg";
+import Svg, { Path, Circle, Line, Text as SvgText, Defs, LinearGradient, Stop, RadialGradient } from "react-native-svg";
 import * as Haptics from "expo-haptics";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
@@ -456,8 +456,19 @@ const SpeedHistoryChart = ({ data }: { data: any[] }) => {
 type TestStatus = "idle" | "ping" | "download" | "upload" | "finished";
 
 export default function SpeedScreen() {
-  const { settings } = useAppStore();
+  const { settings, updateSettings } = useAppStore();
   const [status, setStatus] = useState<TestStatus>("idle");
+  const [isAdvancedExpanded, setIsAdvancedExpanded] = useState(false);
+
+  const handleToggleMultiConnection = (val: boolean) => {
+    updateSettings({ isMultiConnection: val });
+  };
+
+  const TEST_SERVERS = [
+    { id: "cloudflare-auto", name: "Cloudflare (Auto Nearest)", dl: "https://speed.cloudflare.com/__down?bytes=250000000", ul: "https://speed.cloudflare.com/__up" },
+    { id: "aws-edge", name: "AWS Edge (Mock)", dl: "https://speed.cloudflare.com/__down?bytes=250000000", ul: "https://speed.cloudflare.com/__up" },
+    { id: "fastly-edge", name: "Fastly CDN (Mock)", dl: "https://speed.cloudflare.com/__down?bytes=250000000", ul: "https://speed.cloudflare.com/__up" }
+  ];
   const [progress, setProgress] = useState(0);
   const [ping, setPing] = useState<number | null>(null);
   const [jitter, setJitter] = useState<number | null>(null);
@@ -517,6 +528,15 @@ export default function SpeedScreen() {
     }
   }, [status]);
 
+  const clearHistory = async () => {
+    try {
+      await db.delete(networkHistory);
+      setHistory([]);
+    } catch (e) {
+      console.error("Failed to clear history:", e);
+    }
+  };
+
   const fetchSpeedHistory = useCallback(async () => {
     try {
       const list = await db
@@ -535,12 +555,17 @@ export default function SpeedScreen() {
     React.useCallback(() => {
       fetchSpeedHistory();
       
-      fetch("http://ip-api.com/json/")
+      fetch("https://api.ipify.org?format=json")
         .then(res => res.json())
-        .then(data => {
-          if (data.status === "success") {
-            setNetworkInfo({ ip: data.query, isp: data.isp });
-          }
+        .then(ipData => {
+          fetch(`https://ipwho.is/${ipData.ip}`)
+            .then(res => res.json())
+            .then(data => {
+              if (data.success) {
+                setNetworkInfo({ ip: data.ip, isp: data.connection?.isp || data.connection?.org || "Unknown ISP" });
+              }
+            })
+            .catch(err => console.log("Failed to fetch ISP info:", err));
         })
         .catch(err => console.log("Failed to fetch IP info:", err));
     }, [fetchSpeedHistory])
@@ -575,8 +600,8 @@ export default function SpeedScreen() {
         if (Platform.OS !== "web") {
           try {
             const cell = getCellularDetails();
-            cellCarrier = cell?.carrier ?? "WiFi Link";
-            connType = cell?.networkType ?? "WiFi";
+            cellCarrier = cell && cell.length > 0 ? (cell[0].carrier ?? "WiFi Link") : "WiFi Link";
+            connType = cell && cell.length > 0 ? (cell[0].networkType ?? "WiFi") : "WiFi";
           } catch {
             // ignore
           }
@@ -690,38 +715,44 @@ export default function SpeedScreen() {
   const currentSpeed = status === "download" ? downloadSpeed : status === "upload" ? uploadSpeed : 0;
 
   return (
-    <SafeAreaView edges={["bottom"]} style={{ flex: 1, backgroundColor: "#020617" }} className="flex-1 bg-slate-950">
+    <View style={{ flex: 1 }} className="flex-1">
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 100 }}
-        className="flex-1 px-4 py-2"
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 24, paddingBottom: 100 }}
+        className="flex-1"
       >
-        {/* Title */}
-        <View className="mb-6 mt-4">
-          <Text className="text-2xl font-bold text-slate-50">Speed Test</Text>
-          <Text className="text-slate-400 text-xs mt-0.5">Multi-threaded latency and throughput audit</Text>
-        </View>
 
-        {/* Gauge Card */}
-        <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 mb-5 items-center py-8 shadow-lg relative overflow-hidden">
+
+        {/* Compact Gauge Card */}
+        <View className="bg-slate-900/80 border border-slate-800/80 rounded-[32px] p-4 mb-5 items-center shadow-lg relative overflow-hidden backdrop-blur-md">
           {/* Animated Glow during active testing */}
           {(status === "download" || status === "upload") && (
-            <View
-              className={`absolute top-10 w-44 h-44 rounded-full filter blur-3xl opacity-15 ${status === "download" ? "bg-sky-500" : "bg-pink-500"}`}
-            />
+            <View className="absolute top-10 w-44 h-44 opacity-20">
+              <Svg height="100%" width="100%">
+                <Defs>
+                  <RadialGradient id="mainGlow" cx="50%" cy="50%" rx="50%" ry="50%">
+                    <Stop offset="0%" stopColor={status === "download" ? "#0ea5e9" : "#ec4899"} stopOpacity="1" />
+                    <Stop offset="100%" stopColor={status === "download" ? "#0ea5e9" : "#ec4899"} stopOpacity="0" />
+                  </RadialGradient>
+                </Defs>
+                <Circle cx="50%" cy="50%" r="50%" fill="url(#mainGlow)" />
+              </Svg>
+            </View>
           )}
 
           {/* Core Speedometer Gauge */}
-          <Speedometer speed={currentSpeed} />
+          <View className="scale-[0.85] -my-4">
+            <Speedometer speed={currentSpeed} />
+          </View>
 
           {status !== "idle" && status !== "finished" && (
-            <View className="w-44 h-10 mt-3 items-center justify-center">
+            <View className="w-44 h-8 items-center justify-center -mt-2">
               {status === "download" && downloadHistory.length > 0 ? (
                 <Sparkline data={downloadHistory} color="#0ea5e9" max={getTargetMax(currentSpeed)} />
               ) : status === "upload" && uploadHistory.length > 0 ? (
                 <Sparkline data={uploadHistory} color="#ec4899" max={getTargetMax(currentSpeed)} />
               ) : (
-                <View className="w-full bg-slate-950 border border-slate-800 h-2.5 rounded-full overflow-hidden shadow-inner">
+                <View className="w-full bg-slate-950 border border-slate-800 h-2 rounded-full overflow-hidden shadow-inner">
                   <View
                     style={{ width: `${progress * 100}%` }}
                     className={`h-full ${status === "download" ? "bg-sky-500" : "bg-pink-500"}`}
@@ -731,8 +762,8 @@ export default function SpeedScreen() {
             </View>
           )}
 
-          {status !== "idle" && (
-            <Text className="text-[10px] font-black text-sky-400 uppercase tracking-widest mt-2">
+          {status !== "idle" && status !== "finished" && (
+            <Text className="text-[10px] font-black text-sky-400 uppercase tracking-widest mt-3">
               {status.toUpperCase()}
             </Text>
           )}
@@ -740,7 +771,7 @@ export default function SpeedScreen() {
           {/* Action Trigger Button */}
           <TouchableOpacity
             onPress={handleStartTest}
-            className={`mt-6 px-12 py-3.5 rounded-full shadow-lg items-center justify-center ${
+            className={`mt-3 px-10 py-3 rounded-full shadow-lg items-center justify-center ${
               status !== "idle" && status !== "finished"
                 ? "bg-slate-800 border border-slate-700 active:bg-slate-700"
                 : "bg-sky-500 active:bg-sky-600"
@@ -752,8 +783,10 @@ export default function SpeedScreen() {
           </TouchableOpacity>
         </View>
 
+
+
         {/* Speed test metrics details grid */}
-        <View className="flex-row flex-wrap gap-4 mb-6">
+        <View className="flex-row flex-wrap gap-4 mb-5">
           {/* Download Speed Card */}
           <Animated.View
             style={{
@@ -844,7 +877,7 @@ export default function SpeedScreen() {
         </View>
 
         {/* Network Info Footer */}
-        <View className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex-row justify-between mb-4 mt-2">
+        <View className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex-row justify-between mb-5">
           <View>
             <Text className="text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-0.5">Your Network</Text>
             <Text className="text-slate-200 text-sm font-semibold">{networkInfo?.isp || "Fetching ISP..."}</Text>
@@ -859,6 +892,63 @@ export default function SpeedScreen() {
           </View>
         </View>
 
+        {/* Expandable Advanced Options */}
+        <View className="bg-slate-900/60 border border-slate-800/60 rounded-2xl mb-5 overflow-hidden">
+          <TouchableOpacity
+            onPress={() => setIsAdvancedExpanded(!isAdvancedExpanded)}
+            className="p-4 flex-row justify-between items-center bg-slate-900"
+          >
+            <View className="flex-row items-center gap-2">
+              <Settings size={16} color="#818cf8" />
+              <Text className="text-sm font-bold text-slate-300">Advanced Configuration</Text>
+            </View>
+            {isAdvancedExpanded ? <ChevronUp size={18} color="#64748b" /> : <ChevronDown size={18} color="#64748b" />}
+          </TouchableOpacity>
+
+          {isAdvancedExpanded && (
+            <View className="p-4 pt-1 border-t border-slate-800/40" style={{ gap: 12 }}>
+              <View className="flex-row justify-between items-center py-1">
+                <View className="flex-1 pr-4">
+                  <Text className="text-slate-300 font-semibold text-xs">Multi Connection</Text>
+                  <Text className="text-slate-500 text-[10px] mt-0.5 leading-relaxed">
+                    Use multiple simultaneous streams to maximize throughput, or single stream to diagnose throttling.
+                  </Text>
+                </View>
+                <Switch
+                  value={settings.isMultiConnection}
+                  onValueChange={handleToggleMultiConnection}
+                  trackColor={{ false: "#1e293b", true: "#818cf8" }}
+                  thumbColor={settings.isMultiConnection ? "#f8fafc" : "#64748b"}
+                  style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                />
+              </View>
+
+              <View className="mt-1 pt-3 border-t border-slate-800/40">
+                <Text className="text-slate-500 text-[9px] uppercase font-bold tracking-wider mb-2">
+                  Select Edge Server
+                </Text>
+                <View style={{ gap: 6 }}>
+                  {TEST_SERVERS.map((srv) => (
+                    <TouchableOpacity
+                      key={srv.id}
+                      onPress={() => updateSettings({ selectedServerId: srv.id, customDownloadUrl: srv.dl, customUploadUrl: srv.ul })}
+                      className={`px-3 py-2 rounded-lg border ${
+                        settings.selectedServerId === srv.id
+                          ? "bg-indigo-500/10 border-indigo-500/40"
+                          : "bg-slate-950/40 border-slate-800/60"
+                      }`}
+                    >
+                      <Text className={`text-[11px] font-semibold ${settings.selectedServerId === srv.id ? "text-indigo-400" : "text-slate-400"}`}>
+                        {srv.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </View>
+          )}
+        </View>
+
         {/* Audit Completion rating summary Card */}
         {status === "finished" && (
           <Animated.View
@@ -866,11 +956,17 @@ export default function SpeedScreen() {
             className="bg-slate-900 border border-slate-800 rounded-3xl p-5 mb-5 shadow-lg relative overflow-hidden"
           >
             {/* Background rating highlight glow */}
-            <View
-              className={`absolute -right-10 -top-10 w-24 h-24 rounded-full filter blur-xl opacity-20 ${
-                downloadSpeed > 100 ? "bg-emerald-500" : downloadSpeed > 50 ? "bg-sky-500" : "bg-indigo-500"
-              }`}
-            />
+            <View className="absolute -right-10 -top-10 w-24 h-24 opacity-20">
+              <Svg height="100%" width="100%">
+                <Defs>
+                  <RadialGradient id="cardGlow" cx="50%" cy="50%" rx="50%" ry="50%">
+                    <Stop offset="0%" stopColor={downloadSpeed > uploadSpeed ? "#0ea5e9" : "#ec4899"} stopOpacity="1" />
+                    <Stop offset="100%" stopColor={downloadSpeed > uploadSpeed ? "#0ea5e9" : "#ec4899"} stopOpacity="0" />
+                  </RadialGradient>
+                </Defs>
+                <Circle cx="50%" cy="50%" r="50%" fill="url(#cardGlow)" />
+              </Svg>
+            </View>
 
             <View className="flex-row items-center gap-2 mb-2">
               <View className="p-1 rounded bg-slate-950 border border-slate-800">
@@ -917,10 +1013,15 @@ export default function SpeedScreen() {
 
         {/* Speed Test History List */}
         {history.length > 0 && (
-          <View style={{ gap: 10 }} className="mt-2">
-            <Text className="text-xs font-semibold text-slate-500 uppercase tracking-widest px-1">
-              Detailed Logs History
-            </Text>
+          <View style={{ gap: 10 }} className="mb-5">
+            <View className="flex-row justify-between items-center px-1">
+              <Text className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
+                Detailed Logs History
+              </Text>
+              <TouchableOpacity onPress={clearHistory} className="px-2 py-1 opacity-50 active:opacity-100">
+                <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Clear All</Text>
+              </TouchableOpacity>
+            </View>
             {history
               .slice()
               .reverse()
@@ -970,6 +1071,6 @@ export default function SpeedScreen() {
           </View>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }

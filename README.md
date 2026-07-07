@@ -6,13 +6,14 @@ NetPilot is a modern, high-performance Android network diagnostics, telemetry, a
 
 ## 🚀 Features Built So Far
 
-1.  **Dashboard Screen (`src/app/(tabs)/index.tsx`)**: Displays active internet status, cellular details, IP configurations (local IP, Gateway, DNS, VPN status), and location permission banners.
+1.  **Dashboard Screen (`src/app/(tabs)/index.tsx`)**: Displays active internet status, cellular details, IP configurations (local IP, Gateway, DNS, VPN status), location permission banners, and an active **Hardware Telemetry** engine tracking System RAM and Battery Degradation accurately.
 2.  **Cellular Diagnostics (`src/app/(tabs)/cellular.tsx`)**: Shows physical signal values (RSRP, RSRQ, RSSI, SINR) and network tower IDs (PCI, TAC, CID, CGI). It calculates the active **eNodeB ID** and **Sector ID** from the LTE CID and renders a rolling 20-sample signal history chart.
 3.  **WiFi Analyzer (`src/app/(tabs)/wifi.tsx`)**: Scans surrounding access points, rating the optimal non-overlapping channels (1, 6, 11) in the 2.4 GHz band, showing SSID, RSSI, frequency, and Wi-Fi standard (Wi-Fi 4/5/6/7).
 4.  **LAN Devices Scanner (`src/app/(tabs)/wifi.tsx` - LAN Tab)**: Performs fast, parallel multi-threaded subnet ICMP ping sweeps (using a native pool of 40 Kotlin threads) to list active IPs, hostnames, and round-trip latencies.
-5.  **Speed Test (`src/app/(tabs)/speed.tsx`)**: Executes multi-threaded ping/jitterHEAD checks and OkHttp-based upload/download tests against public Cloudflare edge CDN endpoints, saving results to SQLite.
+5.  **Speed Test (`src/app/(tabs)/speed.tsx`)**: Executes multi-threaded ping/jitter checks and OkHttp-based upload/download tests against public Cloudflare edge CDN endpoints, saving results to SQLite.
 6.  **Background Logging Engine (`modules/cellular-diagnostics/.../BackgroundService.kt`)**: An Android Foreground Service that runs on a separate native thread, updates a dynamic telemetry notification, and registers listeners to log signal/location updates into SQLite whenever thresholds are breached (adaptive logging).
 7.  **Settings & Logs viewer (`src/app/(tabs)/settings.tsx`)**: Configures logging thresholds, toggles the native Foreground Service, and displays recent log records fetched from SQLite.
+8.  **About Modal (`src/app/about.tsx`)**: Global info modal displaying real-time app version dynamically sourced from `package.json` along with Engine capabilities and Privacy policies.
 
 ---
 
@@ -27,7 +28,9 @@ netpilot/
 ├── metro.config.js            # Metro bundler with NativeWind v5 wrapper
 ├── global.css                 # Global CSS importing Tailwind classes
 ├── plugins/                   # Custom Expo Config Plugins
-│   └── withAndroidBackgroundService.js  # Injects BackgroundService into Manifest
+│   ├── withAndroidBackgroundService.js  # Injects BackgroundService into Manifest
+│   ├── withAbiSplits.js                 # Injects ABI Splits into build.gradle
+│   └── withAndroidDisableLint.js        # Disables slow Android linting tasks
 ├── modules/                   # Local Native Kotlin Modules (Expo autolinked)
 │   ├── cellular-diagnostics/  # Telephony, IP metrics, & BackgroundService
 │   ├── network-intent/        # launches hidden system diagnostic settings
@@ -84,6 +87,11 @@ If you only need to start the Metro bundler without rebuilding the APK (already 
 ```bash
 npx expo start
 ```
+
+#### Step E: Automated GitHub Actions
+NetPilot utilizes a highly automated CI/CD pipeline. Pushing a tag (e.g., `v1.3.0`) triggers `.github/workflows/release.yml`, generating 5 production-ready APKs:
+- Universal APK
+- CPU-Specific ABI APKs (armeabi-v7a, arm64-v8a, x86, x86_64)
 
 ---
 

@@ -28,6 +28,9 @@ export interface NetworkDetailsData {
   gateway: string | null;
   dns: string | null;
   vpnActive: boolean;
+  subnetPrefix: number | null;
+  ipv6Address: string | null;
+  interfaceName: string | null;
 }
 
 const emitter = CellularDiagnostics ? new EventEmitter(CellularDiagnostics) : null;
@@ -36,12 +39,12 @@ export function getSignalStrength(): number | null {
   return CellularDiagnostics ? CellularDiagnostics.getSignalStrength() : -75;
 }
 
-export function getCellularDetails(): CellularDiagnosticsData | null {
+export function getCellularDetails(): CellularDiagnosticsData[] {
   if (CellularDiagnostics) {
     return CellularDiagnostics.getCellularDetails();
   }
   // Mock fallback for Web
-  return {
+  return [{
     carrier: "Mock Carrier (Web)",
     networkType: "5G SA (Web)",
     rsrp: -78,
@@ -54,7 +57,7 @@ export function getCellularDetails(): CellularDiagnosticsData | null {
     cid: 1234567,
     cgi: "405-840-4636-1234567",
     isRegistered: true
-  };
+  }];
 }
 
 export function getNetworkDetails(): NetworkDetailsData | null {
@@ -66,7 +69,10 @@ export function getNetworkDetails(): NetworkDetailsData | null {
     ipAddress: "192.168.1.52",
     gateway: "192.168.1.1",
     dns: "1.1.1.1, 8.8.8.8",
-    vpnActive: false
+    vpnActive: false,
+    subnetPrefix: 24,
+    ipv6Address: "fe80::1",
+    interfaceName: "wlan0"
   };
 }
 
@@ -80,6 +86,10 @@ export function stopBackgroundService(): boolean {
 
 export function setPowerSaverEnabled(enabled: boolean): boolean {
   return CellularDiagnostics ? CellularDiagnostics.setPowerSaverEnabled(enabled) : false;
+}
+
+export function getAdvancedHardwareMetrics(): any {
+  return CellularDiagnostics ? CellularDiagnostics.getAdvancedHardwareMetrics() : null;
 }
 
 export function addSignalStrengthListener(

@@ -26,15 +26,7 @@ if (Platform.OS !== "web") {
         longitude REAL
       );
 
-      CREATE TABLE IF NOT EXISTS automation_rules (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        trigger_type TEXT NOT NULL,
-        operator TEXT NOT NULL,
-        value TEXT NOT NULL,
-        action_type TEXT NOT NULL,
-        is_active INTEGER DEFAULT 1
-      );
+
     `);
 
     dbInstance = drizzle(expoDb, { schema });
