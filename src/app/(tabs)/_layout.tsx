@@ -4,7 +4,7 @@ import { Platform, View, Text, TouchableOpacity } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LayoutDashboard, Wifi, Gauge, Info } from "lucide-react-native";
 import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
-import Animated, { useSharedValue, withRepeat, withTiming, withSequence, Easing } from 'react-native-reanimated';
+import Animated, { useSharedValue, withRepeat, withTiming, withSequence, Easing } from "react-native-reanimated";
 
 function AppBackground() {
   const opacity = useSharedValue(0.4);
@@ -93,7 +93,9 @@ export default function TabLayout() {
             headerTitle: () => (
               <View>
                 <Text className="text-slate-50 font-bold text-lg">NetPilot Dashboard</Text>
-                <Text className="text-slate-400 text-[10px] uppercase tracking-wider font-bold">Real-time telemetry</Text>
+                <Text className="text-slate-400 text-[10px] uppercase tracking-wider font-bold">
+                  Real-time telemetry
+                </Text>
               </View>
             ),
             tabBarIcon: ({ color, size }) => <LayoutDashboard size={size} color={color} />,
@@ -108,7 +110,9 @@ export default function TabLayout() {
             headerTitle: () => (
               <View>
                 <Text className="text-slate-50 font-bold text-lg">WiFi Analyzer</Text>
-                <Text className="text-slate-400 text-[10px] uppercase tracking-wider font-bold">Spectrum & LAN discovery</Text>
+                <Text className="text-slate-400 text-[10px] uppercase tracking-wider font-bold">
+                  Spectrum & LAN discovery
+                </Text>
               </View>
             ),
             tabBarIcon: ({ color, size }) => <Wifi size={size} color={color} />,
@@ -122,7 +126,9 @@ export default function TabLayout() {
             headerTitle: () => (
               <View>
                 <Text className="text-slate-50 font-bold text-lg">Speed Test</Text>
-                <Text className="text-slate-400 text-[10px] uppercase tracking-wider font-bold">Bandwidth throughput</Text>
+                <Text className="text-slate-400 text-[10px] uppercase tracking-wider font-bold">
+                  Bandwidth throughput
+                </Text>
               </View>
             ),
             tabBarIcon: ({ color, size }) => <Gauge size={size} color={color} />,

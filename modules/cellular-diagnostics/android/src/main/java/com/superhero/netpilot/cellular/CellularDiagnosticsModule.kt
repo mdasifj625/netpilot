@@ -289,75 +289,96 @@ class CellularDiagnosticsModule : Module() {
 
             // Fallback: Real-time query of TelephonyManager's active signal strength (useful for Samsung/Xiaomi and cached info)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && results.isNotEmpty()) {
-                val result = results[0] as MutableMap<String, Any?>
-                val signalStrength = telephonyManager.signalStrength
-                if (signalStrength != null) {
-                    val strengths = signalStrength.cellSignalStrengths
-                    for (strength in strengths) {
-                        when (strength) {
-                            is CellSignalStrengthLte -> {
-                                val rssnr = strength.rssnr
-                                if (rssnr != 2147483647 && (result["sinr"] == null || result["sinr"] == 2147483647)) {
-                                    result["sinr"] = rssnr
-                                }
-                                if (result["rsrq"] == null || result["rsrq"] == 2147483647) {
-                                    val rsrq = strength.rsrq
-                                    if (rsrq != 2147483647) result["rsrq"] = rsrq
-                                }
-                                if (result["rsrp"] == null || result["rsrp"] == 2147483647) {
-                                    val rsrp = strength.rsrp
-                                    if (rsrp != 2147483647) result["rsrp"] = rsrp
-                                }
-                                val rssi = strength.rssi
-                                if (rssi != 2147483647 && rssi != 0 && (result["rssi"] == null || result["rssi"] == 2147483647)) {
-                                    result["rssi"] = rssi
-                                }
-                            }
-                            is CellSignalStrengthNr -> {
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                                    val ssSinr = strength.ssSinr
-                                    val csiSinr = strength.csiSinr
-                                    val validSinr =
-                                        if (ssSinr != 2147483647) {
-                                            ssSinr
-                                        } else if (csiSinr != 2147483647) {
-                                            csiSinr
-                                        } else {
-                                            2147483647
+                try {
+                    val subManager =
+                        context.getSystemService(
+                            Context.TELEPHONY_SUBSCRIPTION_SERVICE,
+                        ) as android.telephony.SubscriptionManager
+                    val activeSubs = subManager.activeSubscriptionInfoList
+                    if (activeSubs != null && activeSubs.isNotEmpty()) {
+                        for (i in results.indices) {
+                            if (i < activeSubs.size) {
+                                val result = results[i] as MutableMap<String, Any?>
+                                val tmForSub = telephonyManager.createForSubscriptionId(activeSubs[i].subscriptionId)
+                                val signalStrength = tmForSub.signalStrength
+                                if (signalStrength != null) {
+                                    val strengths = signalStrength.cellSignalStrengths
+                                    for (strength in strengths) {
+                                        when (strength) {
+                                            is CellSignalStrengthLte -> {
+                                                val rssnr = strength.rssnr
+                                                if (rssnr != 2147483647 && (result["sinr"] == null || result["sinr"] == 2147483647)) {
+                                                    result["sinr"] = rssnr
+                                                }
+                                                if (result["rsrq"] == null || result["rsrq"] == 2147483647) {
+                                                    val rsrq = strength.rsrq
+                                                    if (rsrq != 2147483647) result["rsrq"] = rsrq
+                                                }
+                                                if (result["rsrp"] == null || result["rsrp"] == 2147483647 || result["rsrp"] == -118) {
+                                                    val rsrp = strength.rsrp
+                                                    if (rsrp != 2147483647) result["rsrp"] = rsrp
+                                                }
+                                                val rssi = strength.rssi
+                                                if (rssi != 2147483647 &&
+                                                    rssi != 0 &&
+                                                    (result["rssi"] == null || result["rssi"] == 2147483647)
+                                                ) {
+                                                    result["rssi"] = rssi
+                                                }
+                                            }
+                                            is CellSignalStrengthNr -> {
+                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                                    val ssSinr = strength.ssSinr
+                                                    val csiSinr = strength.csiSinr
+                                                    val validSinr =
+                                                        if (ssSinr != 2147483647) {
+                                                            ssSinr
+                                                        } else if (csiSinr != 2147483647) {
+                                                            csiSinr
+                                                        } else {
+                                                            2147483647
+                                                        }
+                                                    if (validSinr != 2147483647 &&
+                                                        (result["sinr"] == null || result["sinr"] == 2147483647)
+                                                    ) {
+                                                        result["sinr"] = validSinr
+                                                    }
+                                                    if (result["rsrq"] == null || result["rsrq"] == 2147483647) {
+                                                        val ssRsrq = strength.ssRsrq
+                                                        val csiRsrq = strength.csiRsrq
+                                                        val validRsrq =
+                                                            if (ssRsrq != 2147483647) {
+                                                                ssRsrq
+                                                            } else if (csiRsrq != 2147483647) {
+                                                                csiRsrq
+                                                            } else {
+                                                                2147483647
+                                                            }
+                                                        if (validRsrq != 2147483647) result["rsrq"] = validRsrq
+                                                    }
+                                                    if (result["rsrp"] == null || result["rsrp"] == 2147483647 || result["rsrp"] == -118) {
+                                                        val ssRsrp = strength.ssRsrp
+                                                        val csiRsrp = strength.csiRsrp
+                                                        val validRsrp =
+                                                            if (ssRsrp != 2147483647) {
+                                                                ssRsrp
+                                                            } else if (csiRsrp != 2147483647) {
+                                                                csiRsrp
+                                                            } else {
+                                                                2147483647
+                                                            }
+                                                        if (validRsrp != 2147483647) result["rsrp"] = validRsrp
+                                                    }
+                                                }
+                                            }
                                         }
-                                    if (validSinr != 2147483647 && (result["sinr"] == null || result["sinr"] == 2147483647)) {
-                                        result["sinr"] = validSinr
-                                    }
-                                    if (result["rsrq"] == null || result["rsrq"] == 2147483647) {
-                                        val ssRsrq = strength.ssRsrq
-                                        val csiRsrq = strength.csiRsrq
-                                        val validRsrq =
-                                            if (ssRsrq != 2147483647) {
-                                                ssRsrq
-                                            } else if (csiRsrq != 2147483647) {
-                                                csiRsrq
-                                            } else {
-                                                2147483647
-                                            }
-                                        if (validRsrq != 2147483647) result["rsrq"] = validRsrq
-                                    }
-                                    if (result["rsrp"] == null || result["rsrp"] == 2147483647) {
-                                        val ssRsrp = strength.ssRsrp
-                                        val csiRsrp = strength.csiRsrp
-                                        val validRsrp =
-                                            if (ssRsrp != 2147483647) {
-                                                ssRsrp
-                                            } else if (csiRsrp != 2147483647) {
-                                                csiRsrp
-                                            } else {
-                                                2147483647
-                                            }
-                                        if (validRsrp != 2147483647) result["rsrp"] = validRsrp
                                     }
                                 }
                             }
                         }
                     }
+                } catch (e: Exception) {
+                    // Ignore fallback failure
                 }
             }
         } catch (e: SecurityException) {

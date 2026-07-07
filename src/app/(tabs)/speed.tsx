@@ -399,10 +399,25 @@ const RadarChart = ({ down, up, ping, jitter }: { down: number; up: number; ping
         <Circle cx={p3.split(",")[0]} cy={p3.split(",")[1]} r="4" fill="#818cf8" />
         <Circle cx={p4.split(",")[0]} cy={p4.split(",")[1]} r="4" fill="#34d399" />
 
-        <SvgText x={center} y={center - radius - 10} fill="#94a3b8" fontSize="10" textAnchor="middle" fontWeight="bold">Download</SvgText>
-        <SvgText x={center + radius + 8} y={center + 3} fill="#94a3b8" fontSize="10" textAnchor="start" fontWeight="bold">Ping</SvgText>
-        <SvgText x={center} y={center + radius + 15} fill="#94a3b8" fontSize="10" textAnchor="middle" fontWeight="bold">Upload</SvgText>
-        <SvgText x={center - radius - 8} y={center + 3} fill="#94a3b8" fontSize="10" textAnchor="end" fontWeight="bold">Jitter</SvgText>
+        <SvgText x={center} y={center - radius - 10} fill="#94a3b8" fontSize="10" textAnchor="middle" fontWeight="bold">
+          Download
+        </SvgText>
+        <SvgText
+          x={center + radius + 8}
+          y={center + 3}
+          fill="#94a3b8"
+          fontSize="10"
+          textAnchor="start"
+          fontWeight="bold"
+        >
+          Ping
+        </SvgText>
+        <SvgText x={center} y={center + radius + 15} fill="#94a3b8" fontSize="10" textAnchor="middle" fontWeight="bold">
+          Upload
+        </SvgText>
+        <SvgText x={center - radius - 8} y={center + 3} fill="#94a3b8" fontSize="10" textAnchor="end" fontWeight="bold">
+          Jitter
+        </SvgText>
       </Svg>
     </View>
   );
@@ -465,9 +480,24 @@ export default function SpeedScreen() {
   };
 
   const TEST_SERVERS = [
-    { id: "cloudflare-auto", name: "Cloudflare (Auto Nearest)", dl: "https://speed.cloudflare.com/__down?bytes=250000000", ul: "https://speed.cloudflare.com/__up" },
-    { id: "aws-edge", name: "AWS Edge (Mock)", dl: "https://speed.cloudflare.com/__down?bytes=250000000", ul: "https://speed.cloudflare.com/__up" },
-    { id: "fastly-edge", name: "Fastly CDN (Mock)", dl: "https://speed.cloudflare.com/__down?bytes=250000000", ul: "https://speed.cloudflare.com/__up" }
+    {
+      id: "cloudflare-auto",
+      name: "Cloudflare (Auto Nearest)",
+      dl: "https://speed.cloudflare.com/__down?bytes=250000000",
+      ul: "https://speed.cloudflare.com/__up",
+    },
+    {
+      id: "aws-edge",
+      name: "AWS Edge (Mock)",
+      dl: "https://speed.cloudflare.com/__down?bytes=250000000",
+      ul: "https://speed.cloudflare.com/__up",
+    },
+    {
+      id: "fastly-edge",
+      name: "Fastly CDN (Mock)",
+      dl: "https://speed.cloudflare.com/__down?bytes=250000000",
+      ul: "https://speed.cloudflare.com/__up",
+    },
   ];
   const [progress, setProgress] = useState(0);
   const [ping, setPing] = useState<number | null>(null);
@@ -554,20 +584,20 @@ export default function SpeedScreen() {
   useFocusEffect(
     React.useCallback(() => {
       fetchSpeedHistory();
-      
+
       fetch("https://api.ipify.org?format=json")
-        .then(res => res.json())
-        .then(ipData => {
+        .then((res) => res.json())
+        .then((ipData) => {
           fetch(`https://ipwho.is/${ipData.ip}`)
-            .then(res => res.json())
-            .then(data => {
+            .then((res) => res.json())
+            .then((data) => {
               if (data.success) {
                 setNetworkInfo({ ip: data.ip, isp: data.connection?.isp || data.connection?.org || "Unknown ISP" });
               }
             })
-            .catch(err => console.log("Failed to fetch ISP info:", err));
+            .catch((err) => console.log("Failed to fetch ISP info:", err));
         })
-        .catch(err => console.log("Failed to fetch IP info:", err));
+        .catch((err) => console.log("Failed to fetch IP info:", err));
     }, [fetchSpeedHistory])
   );
 
@@ -721,8 +751,6 @@ export default function SpeedScreen() {
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 24, paddingBottom: 100 }}
         className="flex-1"
       >
-
-
         {/* Compact Gauge Card */}
         <View className="bg-slate-900/80 border border-slate-800/80 rounded-[32px] p-4 mb-5 items-center shadow-lg relative overflow-hidden backdrop-blur-md">
           {/* Animated Glow during active testing */}
@@ -782,8 +810,6 @@ export default function SpeedScreen() {
             </Text>
           </TouchableOpacity>
         </View>
-
-
 
         {/* Speed test metrics details grid */}
         <View className="flex-row flex-wrap gap-4 mb-5">
@@ -886,7 +912,11 @@ export default function SpeedScreen() {
           <View className="items-end">
             <Text className="text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-0.5">Test Server</Text>
             <Text className="text-sky-400 text-sm font-semibold">
-              {settings.selectedServerId === "aws-edge" ? "AWS Edge" : settings.selectedServerId === "fastly-edge" ? "Fastly CDN" : "Cloudflare Edge"}
+              {settings.selectedServerId === "aws-edge"
+                ? "AWS Edge"
+                : settings.selectedServerId === "fastly-edge"
+                  ? "Fastly CDN"
+                  : "Cloudflare Edge"}
             </Text>
             <Text className="text-slate-400 text-xs mt-0.5">Auto / Nearest</Text>
           </View>
@@ -931,14 +961,18 @@ export default function SpeedScreen() {
                   {TEST_SERVERS.map((srv) => (
                     <TouchableOpacity
                       key={srv.id}
-                      onPress={() => updateSettings({ selectedServerId: srv.id, customDownloadUrl: srv.dl, customUploadUrl: srv.ul })}
+                      onPress={() =>
+                        updateSettings({ selectedServerId: srv.id, customDownloadUrl: srv.dl, customUploadUrl: srv.ul })
+                      }
                       className={`px-3 py-2 rounded-lg border ${
                         settings.selectedServerId === srv.id
                           ? "bg-indigo-500/10 border-indigo-500/40"
                           : "bg-slate-950/40 border-slate-800/60"
                       }`}
                     >
-                      <Text className={`text-[11px] font-semibold ${settings.selectedServerId === srv.id ? "text-indigo-400" : "text-slate-400"}`}>
+                      <Text
+                        className={`text-[11px] font-semibold ${settings.selectedServerId === srv.id ? "text-indigo-400" : "text-slate-400"}`}
+                      >
                         {srv.name}
                       </Text>
                     </TouchableOpacity>
@@ -961,7 +995,11 @@ export default function SpeedScreen() {
                 <Defs>
                   <RadialGradient id="cardGlow" cx="50%" cy="50%" rx="50%" ry="50%">
                     <Stop offset="0%" stopColor={downloadSpeed > uploadSpeed ? "#0ea5e9" : "#ec4899"} stopOpacity="1" />
-                    <Stop offset="100%" stopColor={downloadSpeed > uploadSpeed ? "#0ea5e9" : "#ec4899"} stopOpacity="0" />
+                    <Stop
+                      offset="100%"
+                      stopColor={downloadSpeed > uploadSpeed ? "#0ea5e9" : "#ec4899"}
+                      stopOpacity="0"
+                    />
                   </RadialGradient>
                 </Defs>
                 <Circle cx="50%" cy="50%" r="50%" fill="url(#cardGlow)" />
@@ -974,9 +1012,9 @@ export default function SpeedScreen() {
               </View>
               <Text className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Network Rating</Text>
             </View>
-            
+
             <RadarChart down={downloadSpeed} up={uploadSpeed} ping={ping ?? 0} jitter={jitter ?? 0} />
-            
+
             <Text
               className={`text-sm font-black mt-1 ${
                 downloadSpeed > 100

@@ -7,7 +7,6 @@ export default function AboutScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: "#020617" }} className="flex-1">
       <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 60 }}>
-        
         {/* Header Logo Area */}
         <View className="items-center justify-center my-8">
           <View className="w-24 h-24 bg-slate-900 rounded-3xl border border-slate-800 items-center justify-center mb-6 shadow-2xl">
@@ -49,12 +48,11 @@ export default function AboutScreen() {
             <Text className="text-slate-200 font-bold text-base">Privacy & Analytics</Text>
           </View>
           <Text className="text-slate-400 text-sm leading-relaxed mt-2">
-            NetPilot performs zero background telemetry or remote analytics. All hardware 
-            metrics, cell tower signals, and speed tests are executed directly on-device 
-            using local Kotlin modules. Your data never leaves your device unless explicitly shared.
+            NetPilot performs zero background telemetry or remote analytics. All hardware metrics, cell tower signals,
+            and speed tests are executed directly on-device using local Kotlin modules. Your data never leaves your
+            device unless explicitly shared.
           </Text>
         </View>
-
       </ScrollView>
     </View>
   );
